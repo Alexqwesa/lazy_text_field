@@ -13,9 +13,8 @@ void main() {
     expect(find.text('Notes'), findsOneWidget);
     expect(find.byIcon(Icons.info_outline), findsWidgets);
     expect(find.byType(LazyTextField), findsWidgets);
-
-    await tester.tap(find.text('Edit full'));
-    await tester.pump();
+    expect(find.text('Edit full'), findsOneWidget);
+    expect(find.text('Click'), findsOneWidget);
 
     await tester.tap(find.byType(LazyTextField).first);
     await tester.pump();

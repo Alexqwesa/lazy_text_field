@@ -53,9 +53,9 @@ class _LazyTextFieldExampleScreenState
       owner: owners[index % owners.length],
       status: statuses[index % statuses.length],
       notes: switch (index) {
-        0 => 'Line one\nLine two\nLine three',
-        7 => 'Plan\nBuild\nVerify',
-        14 => 'Static view\nEdit view\nSame text origin',
+        0 => 'Line one\nLine two\nLine three\nLine four',
+        7 => 'Plan\nBuild\nVerify\nShip',
+        14 => 'Static view\nEdit view\nSame text origin\nStable height',
         _ => switch (index % 5) {
           1 => 'Click this lazy field to edit.',
           2 => '',
@@ -72,9 +72,9 @@ class _LazyTextFieldExampleScreenState
   final _horizontalScrollController = ScrollController();
   LazyInputDecorationVisibility _visibility =
       LazyInputDecorationVisibility.always;
-  _HeightMode _heightMode = _HeightMode.fixed;
+  _HeightMode _heightMode = _HeightMode.onEditFull;
   LazyTextFieldStartEditSelection _startEditSelection =
-      LazyTextFieldStartEditSelection.end;
+      LazyTextFieldStartEditSelection.tapPosition;
   bool _showIcons = true;
 
   @override
@@ -148,7 +148,8 @@ class _LazyTextFieldExampleScreenState
                       _statusWidth +
                       _notesWidth +
                       _rowGap * 4 +
-                      _rowPadding * 2,
+                      _rowPadding * 2 +
+                      16,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -177,53 +178,56 @@ class _LazyTextFieldExampleScreenState
     final colorScheme = Theme.of(context).colorScheme;
     final row = _rows[rowIndex];
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border.all(color: colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(_rowPadding),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: _rowNumberWidth,
-              height: _fieldHeight,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '#${rowIndex + 1}',
-                  style: Theme.of(context).textTheme.labelMedium,
+    return Padding(
+      padding: const EdgeInsets.only(right: 16.0),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          border: Border.all(color: colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(_rowPadding),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: _rowNumberWidth,
+                height: _fieldHeight,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '#${rowIndex + 1}',
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: _rowGap),
-            _FieldCell(
-              width: _taskWidth,
-              value: row.task,
-              child: _lazyField(rowIndex, _DemoColumn.task, row.task),
-            ),
-            const SizedBox(width: _rowGap),
-            _FieldCell(
-              width: _ownerWidth,
-              value: row.owner,
-              child: _lazyField(rowIndex, _DemoColumn.owner, row.owner),
-            ),
-            const SizedBox(width: _rowGap),
-            _FieldCell(
-              width: _statusWidth,
-              value: row.status,
-              child: _lazyField(rowIndex, _DemoColumn.status, row.status),
-            ),
-            const SizedBox(width: _rowGap),
-            _FieldCell(
-              width: _notesWidth,
-              value: row.notes,
-              child: _lazyField(rowIndex, _DemoColumn.notes, row.notes),
-            ),
-          ],
+              const SizedBox(width: _rowGap),
+              _FieldCell(
+                width: _taskWidth,
+                value: row.task,
+                child: _lazyField(rowIndex, _DemoColumn.task, row.task),
+              ),
+              const SizedBox(width: _rowGap),
+              _FieldCell(
+                width: _ownerWidth,
+                value: row.owner,
+                child: _lazyField(rowIndex, _DemoColumn.owner, row.owner),
+              ),
+              const SizedBox(width: _rowGap),
+              _FieldCell(
+                width: _statusWidth,
+                value: row.status,
+                child: _lazyField(rowIndex, _DemoColumn.status, row.status),
+              ),
+              const SizedBox(width: _rowGap),
+              _FieldCell(
+                width: _notesWidth,
+                value: row.notes,
+                child: _lazyField(rowIndex, _DemoColumn.notes, row.notes),
+              ),
+            ],
+          ),
         ),
       ),
     );
