@@ -25,6 +25,7 @@ class StatefulLazyTextField extends StatefulWidget {
     this.scrollbarGutter = 12,
     this.scrollbarThickness = 6,
     this.scrollbarAlignment = LazyTextField.defaultScrollbarAlignment,
+    this.startEditSelection = LazyTextFieldStartEditSelection.end,
     this.readOnlyAsLink = false,
     this.onWillStartEditing,
     this.onCancel,
@@ -44,6 +45,7 @@ class StatefulLazyTextField extends StatefulWidget {
   final double scrollbarGutter;
   final double scrollbarThickness;
   final AlignmentGeometry scrollbarAlignment;
+  final LazyTextFieldStartEditSelection startEditSelection;
   final bool readOnlyAsLink;
   final FutureOr<bool> Function()? onWillStartEditing;
   final VoidCallback? onCancel;
@@ -89,12 +91,14 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
       scrollbarAlignment: widget.scrollbarAlignment,
       readOnlyAsLink: widget.readOnlyAsLink,
       onStartEditing: () => unawaited(_startEditing()),
+      onStartEditingWithDetails: (details) =>
+          unawaited(_startEditing(textOffset: details.textOffset)),
       onSubmitted: (value) => unawaited(_save(value)),
       onTapOutside: (_) => unawaited(_save(_controller?.text ?? widget.text)),
     );
   }
 
-  Future<void> _startEditing() async {
+  Future<void> _startEditing({int? textOffset}) async {
     final allowed = await Future<bool>.value(
       widget.onWillStartEditing?.call() ?? true,
     );
@@ -110,8 +114,10 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !focusNode.canRequestFocus) return;
       focusNode.requestFocus();
-      controller.selection = TextSelection.collapsed(
-        offset: controller.text.length,
+      controller.selection = _startEditSelectionFor(
+        text: controller.text,
+        textOffset: textOffset,
+        policy: widget.startEditSelection,
       );
     });
   }
@@ -162,4 +168,26 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
     controller?.dispose();
     focusNode?.dispose();
   }
+}
+
+TextSelection _startEditSelectionFor({
+  required String text,
+  required LazyTextFieldStartEditSelection policy,
+  int? textOffset,
+}) {
+  return switch (policy) {
+    LazyTextFieldStartEditSelection.beginning => const TextSelection.collapsed(
+      offset: 0,
+    ),
+    LazyTextFieldStartEditSelection.end => TextSelection.collapsed(
+      offset: text.length,
+    ),
+    LazyTextFieldStartEditSelection.tapPosition => TextSelection.collapsed(
+      offset: (textOffset ?? text.length).clamp(0, text.length),
+    ),
+    LazyTextFieldStartEditSelection.fullSelection => TextSelection(
+      baseOffset: 0,
+      extentOffset: text.length,
+    ),
+  };
 }

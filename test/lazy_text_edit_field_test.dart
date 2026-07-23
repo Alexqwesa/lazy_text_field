@@ -309,6 +309,79 @@ void main() {
     expect(find.byType(EditableText), findsOneWidget);
   });
 
+  testWidgets('start edit selection policy places cursor at beginning', (
+    tester,
+  ) async {
+    await _pumpStatefulSelectionCell(
+      tester,
+      startEditSelection: LazyTextFieldStartEditSelection.beginning,
+    );
+
+    await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      _editableSelection(tester),
+      const TextSelection.collapsed(offset: 0),
+    );
+  });
+
+  testWidgets('start edit selection policy places cursor at end', (
+    tester,
+  ) async {
+    await _pumpStatefulSelectionCell(
+      tester,
+      startEditSelection: LazyTextFieldStartEditSelection.end,
+    );
+
+    await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      _editableSelection(tester),
+      const TextSelection.collapsed(offset: 6),
+    );
+  });
+
+  testWidgets('start edit selection policy uses clicked text position', (
+    tester,
+  ) async {
+    await _pumpStatefulSelectionCell(
+      tester,
+      startEditSelection: LazyTextFieldStartEditSelection.tapPosition,
+    );
+
+    final surfaceTopLeft = tester.getTopLeft(
+      find.byKey(LazyTextFieldKeys.staticSurface(cellId)),
+    );
+    await tester.tapAt(surfaceTopLeft + Offset(padding.left + 25, padding.top));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      _editableSelection(tester),
+      const TextSelection.collapsed(offset: 3),
+    );
+  });
+
+  testWidgets('start edit selection policy selects full text', (tester) async {
+    await _pumpStatefulSelectionCell(
+      tester,
+      startEditSelection: LazyTextFieldStartEditSelection.fullSelection,
+    );
+
+    await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      _editableSelection(tester),
+      const TextSelection(baseOffset: 0, extentOffset: 6),
+    );
+  });
+
   testWidgets('bounded height uses package gutter scrollbar in edit mode', (
     tester,
   ) async {
@@ -1917,6 +1990,43 @@ void _expectPointClose(
     positiveDirection: 'down',
     tolerance: tolerance,
   );
+}
+
+Future<void> _pumpStatefulSelectionCell(
+  WidgetTester tester, {
+  required LazyTextFieldStartEditSelection startEditSelection,
+}) async {
+  const helperCellId = 'cell-1';
+  const helperStyle = TextStyle(
+    fontFamily: 'Ahem',
+    fontSize: 10,
+    height: 1,
+    letterSpacing: 0,
+  );
+  const helperPadding = EdgeInsets.fromLTRB(3, 4, 5, 6);
+
+  await tester.pumpWidget(
+    _TestApp(
+      child: SizedBox(
+        width: 120,
+        child: StatefulLazyTextField(
+          cellId: helperCellId,
+          text: 'abcdef',
+          onSave: (_) => true,
+          style: helperStyle,
+          padding: helperPadding,
+          startEditSelection: startEditSelection,
+        ),
+      ),
+    ),
+  );
+}
+
+TextSelection _editableSelection(WidgetTester tester) {
+  return tester
+      .widget<EditableText>(find.byType(EditableText))
+      .controller
+      .selection;
 }
 
 class _RebuildOnPointerDown extends StatefulWidget {

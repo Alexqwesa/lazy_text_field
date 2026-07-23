@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `LazyTextFieldOverflowMarkerDetails` for marker builder state.
 - `scrollbarThickness` and `scrollbarAlignment` for customizing the bounded
   edit-mode scrollbar.
+- `startEditSelection` for choosing beginning, end, clicked text position, or
+  full-text selection when editing starts.
 
 ## [1.0.0] - 2026-07-23
 

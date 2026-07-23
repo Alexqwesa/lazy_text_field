@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:lazy_text_field/src/lazy_text_field.dart';
 
 /// Manages lazy controller/focus allocation for many [ScopedLazyTextField]
 /// cells.
@@ -22,6 +23,9 @@ class LazyTextFieldEditController extends ChangeNotifier {
     required String cellId,
     required String initialValue,
     bool allowMultipleActiveEdits = false,
+    LazyTextFieldStartEditSelection startEditSelection =
+        LazyTextFieldStartEditSelection.end,
+    int? textOffset,
   }) {
     if (!allowMultipleActiveEdits) {
       stopWhere((id) => id != cellId);
@@ -29,7 +33,12 @@ class LazyTextFieldEditController extends ChangeNotifier {
 
     final existing = _controllers[cellId];
     if (existing != null) {
-      _focusExisting(cellId, existing);
+      _focusExisting(
+        cellId,
+        existing,
+        startEditSelection: startEditSelection,
+        textOffset: textOffset,
+      );
       return existing;
     }
 
@@ -42,8 +51,10 @@ class LazyTextFieldEditController extends ChangeNotifier {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (!focusNode.canRequestFocus) return;
       focusNode.requestFocus();
-      controller.selection = TextSelection.collapsed(
-        offset: controller.text.length,
+      controller.selection = _startEditSelectionFor(
+        text: controller.text,
+        policy: startEditSelection,
+        textOffset: textOffset,
       );
     });
     return controller;
@@ -79,10 +90,17 @@ class LazyTextFieldEditController extends ChangeNotifier {
     stopWhere((_) => true);
   }
 
-  void _focusExisting(String cellId, TextEditingController controller) {
+  void _focusExisting(
+    String cellId,
+    TextEditingController controller, {
+    required LazyTextFieldStartEditSelection startEditSelection,
+    int? textOffset,
+  }) {
     final focusNode = _focusNodes[cellId];
-    controller.selection = TextSelection.collapsed(
-      offset: controller.text.length,
+    controller.selection = _startEditSelectionFor(
+      text: controller.text,
+      policy: startEditSelection,
+      textOffset: textOffset,
     );
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (focusNode == null || !focusNode.canRequestFocus) return;
@@ -102,4 +120,26 @@ class LazyTextFieldEditController extends ChangeNotifier {
     _focusNodes.clear();
     super.dispose();
   }
+}
+
+TextSelection _startEditSelectionFor({
+  required String text,
+  required LazyTextFieldStartEditSelection policy,
+  int? textOffset,
+}) {
+  return switch (policy) {
+    LazyTextFieldStartEditSelection.beginning => const TextSelection.collapsed(
+      offset: 0,
+    ),
+    LazyTextFieldStartEditSelection.end => TextSelection.collapsed(
+      offset: text.length,
+    ),
+    LazyTextFieldStartEditSelection.tapPosition => TextSelection.collapsed(
+      offset: (textOffset ?? text.length).clamp(0, text.length),
+    ),
+    LazyTextFieldStartEditSelection.fullSelection => TextSelection(
+      baseOffset: 0,
+      extentOffset: text.length,
+    ),
+  };
 }

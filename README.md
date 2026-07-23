@@ -88,6 +88,10 @@ For simple local state, use `StatefulLazyTextField`. For many cells sharing one
 edit manager, wrap a subtree in `LazyTextFieldControllerScope` and use
 `ScopedLazyTextField`.
 
+`StatefulLazyTextField` and `ScopedLazyTextField` can control the initial
+selection with `startEditSelection`: `beginning`, `end`, `tapPosition`, or
+`fullSelection`.
+
 ## Decoration
 
 `LazyInputDecoration` is height-neutral chrome drawn outside the internal

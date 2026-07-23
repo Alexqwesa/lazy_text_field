@@ -28,6 +28,7 @@ class ScopedLazyTextField extends StatefulWidget {
     this.scrollbarGutter = 12,
     this.scrollbarThickness = 6,
     this.scrollbarAlignment = LazyTextField.defaultScrollbarAlignment,
+    this.startEditSelection = LazyTextFieldStartEditSelection.end,
     this.readOnlyAsLink = false,
     this.allowMultipleActiveEdits = false,
     this.onWillStartEditing,
@@ -48,6 +49,7 @@ class ScopedLazyTextField extends StatefulWidget {
   final double scrollbarGutter;
   final double scrollbarThickness;
   final AlignmentGeometry scrollbarAlignment;
+  final LazyTextFieldStartEditSelection startEditSelection;
   final bool readOnlyAsLink;
   final bool allowMultipleActiveEdits;
   final FutureOr<bool> Function()? onWillStartEditing;
@@ -104,12 +106,18 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       scrollbarAlignment: widget.scrollbarAlignment,
       readOnlyAsLink: widget.readOnlyAsLink,
       onStartEditing: () => unawaited(_startEditing(editController)),
+      onStartEditingWithDetails: (details) => unawaited(
+        _startEditing(editController, textOffset: details.textOffset),
+      ),
       onSubmitted: (value) => unawaited(_save(value)),
       onTapOutside: (_) => unawaited(_save(controller?.text ?? widget.text)),
     );
   }
 
-  Future<void> _startEditing(LazyTextFieldEditController editController) async {
+  Future<void> _startEditing(
+    LazyTextFieldEditController editController, {
+    int? textOffset,
+  }) async {
     final allowed = await Future<bool>.value(
       widget.onWillStartEditing?.call() ?? true,
     );
@@ -118,6 +126,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       cellId: widget.cellId,
       initialValue: widget.text,
       allowMultipleActiveEdits: widget.allowMultipleActiveEdits,
+      startEditSelection: widget.startEditSelection,
+      textOffset: textOffset,
     );
   }
 

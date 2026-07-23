@@ -73,6 +73,8 @@ class _LazyTextFieldExampleScreenState
   LazyInputDecorationVisibility _visibility =
       LazyInputDecorationVisibility.always;
   _HeightMode _heightMode = _HeightMode.fixed;
+  LazyTextFieldStartEditSelection _startEditSelection =
+      LazyTextFieldStartEditSelection.end;
   bool _showIcons = true;
 
   @override
@@ -105,6 +107,7 @@ class _LazyTextFieldExampleScreenState
           _Toolbar(
             visibility: _visibility,
             heightMode: _heightMode,
+            startEditSelection: _startEditSelection,
             showIcons: _showIcons,
             activeLabel: activeLabel,
             onVisibilityChanged: (value) {
@@ -115,6 +118,11 @@ class _LazyTextFieldExampleScreenState
             onHeightModeChanged: (value) {
               setState(() {
                 _heightMode = value;
+              });
+            },
+            onStartEditSelectionChanged: (value) {
+              setState(() {
+                _startEditSelection = value;
               });
             },
             onShowIconsChanged: (value) {
@@ -241,6 +249,8 @@ class _LazyTextFieldExampleScreenState
       reservedTrailingWidth: isFixedHeight ? 0 : _scrollbarGutter,
       scrollbarGutter: _scrollbarGutter,
       onStartEditing: () => _startEditing(cellId, value),
+      onStartEditingWithDetails: (details) =>
+          _startEditing(cellId, value, textOffset: details.textOffset),
       onChanged: (nextValue) {
         setState(() {
           _setCellValue(rowIndex, column, nextValue);
@@ -284,7 +294,7 @@ class _LazyTextFieldExampleScreenState
     );
   }
 
-  void _startEditing(String cellId, String value) {
+  void _startEditing(String cellId, String value, {int? textOffset}) {
     if (_activeCellId == cellId) return;
     _controller?.dispose();
     _focusNode?.dispose();
@@ -292,10 +302,28 @@ class _LazyTextFieldExampleScreenState
       _activeCellId = cellId;
       _controller = TextEditingController(text: value);
       _focusNode = FocusNode();
-      _controller!.selection = TextSelection.collapsed(
-        offset: _controller!.text.length,
+      _controller!.selection = _selectionForStartEdit(
+        value,
+        textOffset: textOffset,
       );
     });
+  }
+
+  TextSelection _selectionForStartEdit(String value, {int? textOffset}) {
+    return switch (_startEditSelection) {
+      LazyTextFieldStartEditSelection.beginning =>
+        const TextSelection.collapsed(offset: 0),
+      LazyTextFieldStartEditSelection.end => TextSelection.collapsed(
+        offset: value.length,
+      ),
+      LazyTextFieldStartEditSelection.tapPosition => TextSelection.collapsed(
+        offset: (textOffset ?? value.length).clamp(0, value.length),
+      ),
+      LazyTextFieldStartEditSelection.fullSelection => TextSelection(
+        baseOffset: 0,
+        extentOffset: value.length,
+      ),
+    };
   }
 
   void _stopEditing() {
@@ -328,19 +356,24 @@ class _Toolbar extends StatelessWidget {
   const _Toolbar({
     required this.visibility,
     required this.heightMode,
+    required this.startEditSelection,
     required this.showIcons,
     required this.activeLabel,
     required this.onVisibilityChanged,
     required this.onHeightModeChanged,
+    required this.onStartEditSelectionChanged,
     required this.onShowIconsChanged,
   });
 
   final LazyInputDecorationVisibility visibility;
   final _HeightMode heightMode;
+  final LazyTextFieldStartEditSelection startEditSelection;
   final bool showIcons;
   final String activeLabel;
   final ValueChanged<LazyInputDecorationVisibility> onVisibilityChanged;
   final ValueChanged<_HeightMode> onHeightModeChanged;
+  final ValueChanged<LazyTextFieldStartEditSelection>
+  onStartEditSelectionChanged;
   final ValueChanged<bool> onShowIconsChanged;
 
   @override
@@ -403,6 +436,37 @@ class _Toolbar extends StatelessWidget {
                 selected: {heightMode},
                 onSelectionChanged: (selection) {
                   onHeightModeChanged(selection.single);
+                },
+              ),
+            ),
+            SizedBox(
+              width: 520,
+              child: SegmentedButton<LazyTextFieldStartEditSelection>(
+                segments: const [
+                  ButtonSegment(
+                    value: LazyTextFieldStartEditSelection.beginning,
+                    icon: Icon(Icons.first_page),
+                    label: Text('Begin'),
+                  ),
+                  ButtonSegment(
+                    value: LazyTextFieldStartEditSelection.end,
+                    icon: Icon(Icons.last_page),
+                    label: Text('End'),
+                  ),
+                  ButtonSegment(
+                    value: LazyTextFieldStartEditSelection.tapPosition,
+                    icon: Icon(Icons.ads_click),
+                    label: Text('Click'),
+                  ),
+                  ButtonSegment(
+                    value: LazyTextFieldStartEditSelection.fullSelection,
+                    icon: Icon(Icons.select_all),
+                    label: Text('Select'),
+                  ),
+                ],
+                selected: {startEditSelection},
+                onSelectionChanged: (selection) {
+                  onStartEditSelectionChanged(selection.single);
                 },
               ),
             ),

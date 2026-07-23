@@ -14,6 +14,23 @@ typedef LazyTextFieldOverflowMarkerBuilder =
       LazyTextFieldOverflowMarkerDetails details,
     );
 
+enum LazyTextFieldStartEditSelection {
+  beginning,
+  end,
+  tapPosition,
+  fullSelection,
+}
+
+class LazyTextFieldStartEditDetails {
+  const LazyTextFieldStartEditDetails({
+    required this.localPosition,
+    required this.textOffset,
+  });
+
+  final Offset localPosition;
+  final int textOffset;
+}
+
 /// State passed to [LazyTextFieldOverflowMarkerBuilder].
 class LazyTextFieldOverflowMarkerDetails {
   const LazyTextFieldOverflowMarkerDetails({
@@ -42,6 +59,7 @@ class LazyTextField extends StatefulWidget {
     required this.text,
     required this.isEditing,
     required this.onStartEditing,
+    this.onStartEditingWithDetails,
     this.controller,
     this.focusNode,
     super.key,
@@ -108,6 +126,7 @@ class LazyTextField extends StatefulWidget {
   final TextEditingController? controller;
   final FocusNode? focusNode;
   final VoidCallback onStartEditing;
+  final ValueChanged<LazyTextFieldStartEditDetails>? onStartEditingWithDetails;
   final VoidCallback? onStopEditing;
   final bool singleLine;
   final TextStyle? style;
@@ -164,7 +183,7 @@ class LazyTextField extends StatefulWidget {
   final MouseCursor? mouseCursor;
 
   static const Alignment defaultScrollbarAlignment = Alignment(
-    -0.8,
+    -0.3333333333333333,
     0,
   );
 
@@ -262,6 +281,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
   ScrollController? _scrollController;
   bool _isHovering = false;
   String? _lastLayoutText;
+  LazyTextFieldStartEditDetails? _lastStartEditDetails;
 
   @override
   void initState() {
@@ -594,7 +614,33 @@ class _LazyTextFieldState extends State<LazyTextField> {
           root = GestureDetector(
             key: LazyTextFieldKeys.staticSurface(widget.cellId),
             behavior: HitTestBehavior.opaque,
-            onTap: widget.onStartEditing,
+            onTapDown: (details) {
+              _lastStartEditDetails = _startEditDetailsFor(
+                context: context,
+                localPosition: details.localPosition,
+                layout: layout,
+                layoutPadding: layoutPadding,
+                prefixWidth: prefixWidth,
+                textAreaHeight: textAreaHeight,
+                style: resolvedStyle,
+                direction: direction,
+              );
+            },
+            onTap: () {
+              final onStartEditingWithDetails =
+                  widget.onStartEditingWithDetails;
+              if (onStartEditingWithDetails == null) {
+                widget.onStartEditing();
+                return;
+              }
+              onStartEditingWithDetails(
+                _lastStartEditDetails ??
+                    LazyTextFieldStartEditDetails(
+                      localPosition: Offset.zero,
+                      textOffset: widget.text.length,
+                    ),
+              );
+            },
             onSecondaryTapDown: widget.onSecondaryTapDown,
             onLongPressStart: widget.onLongPressStart,
             child: root,
@@ -624,6 +670,42 @@ class _LazyTextFieldState extends State<LazyTextField> {
       return supplied;
     }
     return _scrollController ??= ScrollController();
+  }
+
+  LazyTextFieldStartEditDetails _startEditDetailsFor({
+    required BuildContext context,
+    required Offset localPosition,
+    required LazyTextFieldLayout layout,
+    required EdgeInsets layoutPadding,
+    required double prefixWidth,
+    required double textAreaHeight,
+    required TextStyle style,
+    required TextDirection direction,
+  }) {
+    final textOrigin = Offset(
+      layoutPadding.left + prefixWidth,
+      layoutPadding.top,
+    );
+    final textLocalPosition = Offset(
+      (localPosition.dx - textOrigin.dx).clamp(0.0, layout.textLayoutWidth),
+      (localPosition.dy - textOrigin.dy).clamp(0.0, textAreaHeight),
+    );
+    final painter = TextPainter(
+      text: TextSpan(
+        text: LazyTextFieldLayout.measureText(widget.text),
+        style: style,
+      ),
+      textDirection: direction,
+      textScaler: MediaQuery.textScalerOf(context),
+      strutStyle: widget.strutStyle ?? StrutStyle.fromTextStyle(style),
+      maxLines: widget.singleLine ? 1 : null,
+      ellipsis: widget.singleLine ? '\u2026' : null,
+    )..layout(maxWidth: layout.textLayoutWidth);
+    final textPosition = painter.getPositionForOffset(textLocalPosition);
+    return LazyTextFieldStartEditDetails(
+      localPosition: localPosition,
+      textOffset: textPosition.offset.clamp(0, widget.text.length),
+    );
   }
 }
 
