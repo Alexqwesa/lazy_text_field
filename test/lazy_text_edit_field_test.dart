@@ -68,6 +68,37 @@ void main() {
     expect(layout.height, 40);
   });
 
+  test('compute keeps bounded text width stable before overflow', () {
+    const wrappingText =
+        'Update cell 1 tests for word 1 wrap 111111111111111111111111111111';
+
+    final unboundedLayout = LazyTextFieldLayout.compute(
+      text: wrappingText,
+      width: 250,
+      padding: padding,
+      singleLine: false,
+      style: textStyle,
+      maxHeight: null,
+      scrollbarGutter: scrollbarGutter,
+    );
+    final boundedLayout = LazyTextFieldLayout.compute(
+      text: wrappingText,
+      width: 250,
+      padding: padding,
+      singleLine: false,
+      style: textStyle,
+      maxHeight: 120,
+      scrollbarGutter: scrollbarGutter,
+    );
+
+    expect(unboundedLayout.reservedScrollbarWidth, 0);
+    expect(boundedLayout.reservedScrollbarWidth, scrollbarGutter);
+    expect(
+      boundedLayout.textViewportWidth,
+      unboundedLayout.textViewportWidth - scrollbarGutter,
+    );
+  });
+
   testWidgets('height calculation is exact for explicit lines', (tester) async {
     late BuildContext capturedContext;
 

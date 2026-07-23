@@ -40,6 +40,7 @@ class _LazyTextFieldExampleScreenState
   static const _rowGap = 10.0;
   static const _fieldHeight = 58.0;
   static const _rowPadding = 8.0;
+  static const _scrollbarGutter = 12.0;
 
   final _rows = List<_DemoRow>.generate(_rowCount, (index) {
     final owners = ['Ari', 'Mina', 'Noah', 'Kai', 'Lena', 'Sam'];
@@ -51,12 +52,16 @@ class _LazyTextFieldExampleScreenState
           : 'Update cell $index',
       owner: owners[index % owners.length],
       status: statuses[index % statuses.length],
-      notes: switch (index % 5) {
-        0 => 'Two-line note\nkeeps the same position in edit mode.',
-        1 => 'Click this lazy field to edit.',
-        2 => '',
-        3 => 'Narrow columns wrap without row-height surprises.',
-        _ => 'Decoration stays outside the real TextField.',
+      notes: switch (index) {
+        0 => 'Line one\nLine two\nLine three',
+        7 => 'Plan\nBuild\nVerify',
+        14 => 'Static view\nEdit view\nSame text origin',
+        _ => switch (index % 5) {
+          1 => 'Click this lazy field to edit.',
+          2 => '',
+          3 => 'Narrow columns wrap without row-height surprises.',
+          _ => 'Decoration stays outside the real TextField.',
+        },
       },
     );
   });
@@ -233,6 +238,8 @@ class _LazyTextFieldExampleScreenState
       decoration: _decoration(context, column),
       decorationVisibility: _visibility,
       maxHeight: isFixedHeight ? _fieldHeight : null,
+      reservedTrailingWidth: isFixedHeight ? 0 : _scrollbarGutter,
+      scrollbarGutter: _scrollbarGutter,
       onStartEditing: () => _startEditing(cellId, value),
       onChanged: (nextValue) {
         setState(() {
@@ -513,6 +520,7 @@ class _FieldCell extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(child: child),
+          const SizedBox(width: _LazyWidths.scrollbarGutter),
           const SizedBox(width: 4),
           SizedBox(
             width: 28,
@@ -569,4 +577,6 @@ abstract final class _LazyWidths {
   static const gap = _LazyTextFieldExampleScreenState._rowGap;
   static const fieldHeight = _LazyTextFieldExampleScreenState._fieldHeight;
   static const rowPadding = _LazyTextFieldExampleScreenState._rowPadding;
+  static const scrollbarGutter =
+      _LazyTextFieldExampleScreenState._scrollbarGutter;
 }

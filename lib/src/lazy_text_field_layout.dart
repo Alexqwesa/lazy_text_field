@@ -100,7 +100,7 @@ class LazyTextFieldLayout {
         .ceilToDouble();
 
     final hasVerticalOverflow = bounded && naturalHeight > effectiveMaxHeight;
-    final reservedScrollbarWidth = hasVerticalOverflow ? scrollbarGutter : 0.0;
+    final reservedScrollbarWidth = bounded ? scrollbarGutter : 0.0;
     final textViewportWidth = math.max<double>(
       0,
       fullTextWidth - reservedScrollbarWidth,

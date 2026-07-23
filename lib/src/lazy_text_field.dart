@@ -395,7 +395,9 @@ class _LazyTextFieldState extends State<LazyTextField> {
           reservedLeadingWidth: prefixWidth,
           reservedTrailingWidth: suffixWidth + widget.reservedTrailingWidth,
           maxHeight: boundedMaxHeight,
-          scrollbarGutter: widget.scrollbarGutter,
+          scrollbarGutter: widget.maxHeight == null
+              ? 0
+              : widget.scrollbarGutter,
           editableTextGutter: _editableTextGutter(widget.cursorWidth),
         );
         final textAreaHeight = math.max<double>(
