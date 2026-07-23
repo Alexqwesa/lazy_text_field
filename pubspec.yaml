@@ -1,0 +1,34 @@
+name: lazy_text_field
+description: Pure-Flutter lazy text fields for table and grid cells with exact constrained-width height measurement.
+version: 1.0.0
+homepage: https://github.com/Alexqwesa/dashboard_tree/tree/master/packages/lazy_text_field
+repository: https://github.com/Alexqwesa/dashboard_tree
+issue_tracker: https://github.com/Alexqwesa/dashboard_tree/issues
+
+environment:
+  sdk: ^3.10.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  fonts:
+    - family: Ahem
+      fonts:
+        - asset: test/fonts/Ahem.ttf
+  assets:
+    - test/fonts/NotoSans-Regular.ttf
+
+topics:
+  - flutter
+  - text-field
+  - datatable
+  - grid
+  - performance
+

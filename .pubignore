@@ -1,0 +1,11 @@
+# Agent maintenance docs — not part of the published API surface.
+skills/
+
+# Local publish helpers.
+tool/
+
+# Generated locally; pub.dev builds API docs after release.
+doc/api/
+
+# Accidental backup from publish scripts.
+pubspec.publish.yaml

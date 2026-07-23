@@ -1,0 +1,37 @@
+name: lazy_text_field
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'packages/lazy_text_field/**'
+      - '.github/workflows/lazy_text_field.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'packages/lazy_text_field/**'
+      - '.github/workflows/lazy_text_field.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.8'
+          cache: true
+
+      - name: Install dependencies
+        working-directory: packages/lazy_text_field
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: packages/lazy_text_field
+        run: flutter analyze --fatal-infos
+
+      - name: Test
+        working-directory: packages/lazy_text_field
+        run: flutter test

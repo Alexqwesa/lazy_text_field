@@ -1,0 +1,20 @@
+name: lazy_text_field_example
+description: Visual test app for lazy_text_field.
+publish_to: none
+
+environment:
+  sdk: ^3.10.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  lazy_text_field:
+    path: ..
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
