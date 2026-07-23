@@ -24,7 +24,7 @@ class StatefulLazyTextField extends StatefulWidget {
     this.maxHeight,
     this.scrollbarGutter = 12,
     this.scrollbarThickness = 6,
-    this.scrollbarAlignment = Alignment.centerRight,
+    this.scrollbarAlignment = LazyTextField.defaultScrollbarAlignment,
     this.readOnlyAsLink = false,
     this.onWillStartEditing,
     this.onCancel,

@@ -57,7 +57,7 @@ class LazyTextField extends StatefulWidget {
     this.maxHeight,
     this.scrollbarGutter = 12,
     this.scrollbarThickness = 6,
-    this.scrollbarAlignment = Alignment.centerRight,
+    this.scrollbarAlignment = LazyTextField.defaultScrollbarAlignment,
     this.readOnlyAsLink = false,
     this.reservedTrailingWidth = 0,
     this.readOnlyOverflowExpanded = false,
@@ -162,6 +162,11 @@ class LazyTextField extends StatefulWidget {
   final Iterable<String>? autofillHints;
   final EditableTextContextMenuBuilder? contextMenuBuilder;
   final MouseCursor? mouseCursor;
+
+  static const Alignment defaultScrollbarAlignment = Alignment(
+    -0.8,
+    0,
+  );
 
   static LazyTextFieldLayout measure(
     BuildContext context, {
@@ -387,11 +392,21 @@ class _LazyTextFieldState extends State<LazyTextField> {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final boundedMaxHeight = _boundedMaxHeight(constraints);
+        final reservesScrollbarGutter =
+            widget.maxHeight != null && widget.scrollbarGutter > 0;
+        final layoutPadding = reservesScrollbarGutter
+            ? EdgeInsets.fromLTRB(
+                resolvedPadding.left,
+                resolvedPadding.top,
+                0,
+                resolvedPadding.bottom,
+              )
+            : resolvedPadding;
         final layout = LazyTextFieldLayout.computeFromContext(
           context,
           text: value,
           width: width,
-          padding: widget.padding,
+          padding: layoutPadding,
           singleLine: widget.singleLine,
           style: resolvedStyle,
           strutStyle: widget.strutStyle,
@@ -524,7 +539,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
         );
 
         final content = Padding(
-          padding: resolvedPadding,
+          padding: layoutPadding,
           child: widget.onCalendarPressed != null
               ? Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1172,12 +1187,12 @@ class _GutterScrollbarPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final thumbX = ((alignment.x + 1) / 2 * (size.width - thickness)).clamp(
+      0.0,
+      size.width - thickness,
+    );
     final thumbRect = Rect.fromLTWH(
-      switch (alignment.x) {
-        <= -1 => 0,
-        >= 1 => size.width - thickness,
-        _ => (size.width - thickness) / 2,
-      },
+      thumbX,
       thumbOffset,
       thickness,
       thumbExtent,

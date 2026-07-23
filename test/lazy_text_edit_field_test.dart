@@ -20,6 +20,7 @@ void main() {
   const padding = EdgeInsets.fromLTRB(3, 4, 5, 6);
   const cellWidth = 120.0;
   const scrollbarGutter = 12.0;
+  const scrollbarThickness = 6.0;
 
   setUpAll(() async {
     final loader = FontLoader('LazyTextFieldNotoSans')
@@ -62,7 +63,7 @@ void main() {
 
     expect(
       layout.textViewportWidth,
-      cellWidth - padding.horizontal - scrollbarGutter,
+      cellWidth - padding.left - scrollbarGutter,
     );
     expect(layout.hasVerticalOverflow, isTrue);
     expect(layout.height, 40);
@@ -95,7 +96,7 @@ void main() {
     expect(boundedLayout.reservedScrollbarWidth, scrollbarGutter);
     expect(
       boundedLayout.textViewportWidth,
-      unboundedLayout.textViewportWidth - scrollbarGutter,
+      unboundedLayout.textViewportWidth - scrollbarGutter + padding.right,
     );
   });
 
@@ -347,7 +348,7 @@ void main() {
     expect(find.byKey(LazyTextEditKeys.scrollbar(cellId)), findsNothing);
     expect(
       staticViewportSize.width,
-      cellWidth - padding.horizontal - scrollbarGutter,
+      cellWidth - padding.left - scrollbarGutter,
     );
 
     await tester.tap(find.byKey(LazyTextEditKeys.staticSurface(cellId)));
@@ -377,6 +378,67 @@ void main() {
     expect(scrollbarPainter.thickness, 8);
     expect(scrollbarPainter.alignment, Alignment.centerRight);
     expect(editViewportSize.width, staticViewportSize.width);
+  });
+
+  testWidgets('default package scrollbar keeps four pixel trailing inset', (
+    tester,
+  ) async {
+    final controller = TextEditingController(
+      text: 'line 1\nline 2\nline 3\nline 4\nline 5\nline 6',
+    );
+    final focusNode = FocusNode();
+
+    addTearDown(controller.dispose);
+    addTearDown(focusNode.dispose);
+
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: cellWidth,
+          height: 40,
+          child: _LazyCellHarness(
+            cellId: cellId,
+            controller: controller,
+            focusNode: focusNode,
+            text: controller.text,
+            style: textStyle,
+            padding: padding,
+            maxHeight: 40,
+            scrollbarGutter: scrollbarGutter,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(LazyTextEditKeys.staticSurface(cellId)));
+    await tester.pump();
+    await tester.pump();
+
+    final scrollbarPainter =
+        tester
+                .widgetList<CustomPaint>(find.byType(CustomPaint))
+                .map((paint) => paint.painter)
+                .where((painter) {
+                  try {
+                    final dynamic scrollbarPainter = painter;
+                    return scrollbarPainter.alignment ==
+                        LazyTextField.defaultScrollbarAlignment;
+                  } on Object {
+                    return false;
+                  }
+                })
+                .single
+            as dynamic;
+
+    expect(scrollbarPainter.thickness, scrollbarThickness);
+    expect(
+      scrollbarGutter -
+          scrollbarPainter.thickness -
+          ((scrollbarPainter.alignment.x + 1) /
+              2 *
+              (scrollbarGutter - scrollbarPainter.thickness)),
+      moreOrLessEquals(4),
+    );
   });
 
   testWidgets('dragging package gutter scrollbar keeps edit mode active', (
@@ -1562,7 +1624,7 @@ class _LazyCellHarness extends StatefulWidget {
     required this.maxHeight,
     required this.scrollbarGutter,
     this.scrollbarThickness = 6,
-    this.scrollbarAlignment = Alignment.centerRight,
+    this.scrollbarAlignment = LazyTextField.defaultScrollbarAlignment,
     this.initiallyEditing = false,
     this.decoration,
   });

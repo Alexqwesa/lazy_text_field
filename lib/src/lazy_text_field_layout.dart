@@ -72,13 +72,16 @@ class LazyTextFieldLayout {
     final resolvedStyle = style ?? const TextStyle();
     final effectiveMaxHeight = maxHeight;
     final bounded = effectiveMaxHeight != null && effectiveMaxHeight.isFinite;
+    final reservedScrollbarWidth = bounded ? scrollbarGutter : 0.0;
+    final horizontalPadding = math.max<double>(
+      0,
+      resolvedPadding.horizontal -
+          (reservedScrollbarWidth > 0 ? resolvedPadding.right : 0),
+    );
 
     final fullTextWidth = math.max<double>(
       0,
-      width -
-          resolvedPadding.horizontal -
-          reservedLeadingWidth -
-          reservedTrailingWidth,
+      width - horizontalPadding - reservedLeadingWidth - reservedTrailingWidth,
     );
     final fullTextLayoutWidth = math.max<double>(
       0,
@@ -100,7 +103,6 @@ class LazyTextFieldLayout {
         .ceilToDouble();
 
     final hasVerticalOverflow = bounded && naturalHeight > effectiveMaxHeight;
-    final reservedScrollbarWidth = bounded ? scrollbarGutter : 0.0;
     final textViewportWidth = math.max<double>(
       0,
       fullTextWidth - reservedScrollbarWidth,
