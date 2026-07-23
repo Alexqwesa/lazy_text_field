@@ -1,6 +1,6 @@
 # lazy_text_field
 
-[![Tests](https://github.com/Alexqwesa/dashboard_tree/actions/workflows/lazy_text_field.yml/badge.svg)](https://github.com/Alexqwesa/dashboard_tree/actions/workflows/lazy_text_field.yml)
+[![Tests](https://github.com/Alexqwesa/lazy_text_field/actions/workflows/lazy_text_field.yml/badge.svg)](https://github.com/Alexqwesa/lazy_text_field/actions/workflows/lazy_text_field.yml)
 [![pub package](https://img.shields.io/pub/v/lazy_text_field.svg)](https://pub.dev/packages/lazy_text_field)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
@@ -40,17 +40,14 @@ Use `LazyTextField` when you render hundreds or thousands of editable cells and
 need predictable memory use, stable row heights, and pixel-aligned transitions
 between read-only and edit modes.
 
-## Screenshots
+## Live demo
 
-Run the included example app to explore decoration modes, bounded height,
-prefix/suffix icons, and lazy controller allocation in a 1000-row list:
+Explore the example app in the browser:
 
-```sh
-cd example
-flutter run -d chrome
-```
+[Open the live demo](https://alexqwesa.github.io/lazy_text_field/)
 
-![LazyTextField example app showing a large editable grid](doc/screenshots/example-grid.png)
+The demo covers decoration modes, bounded height, prefix/suffix icons, and lazy
+controller allocation in a 1000-row list.
 
 ## Choose a widget
 
@@ -144,4 +141,3 @@ controller allocation in large lists.
 ## License
 
 MIT — see [LICENSE](LICENSE).
-

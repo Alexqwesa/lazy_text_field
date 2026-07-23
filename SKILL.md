@@ -1,6 +1,6 @@
 ---
 name: lazy-text-field-api
-description: Use the lazy_text_field package API from Flutter apps. Use when integrating LazyTextField, StatefulLazyTextField, ScopedLazyTextField, LazyInputDecoration, lazy edit controllers/scopes, or exact constrained-width text height measurement without modifying package internals.
+description: "Fast editable cells for Flutter tables and grids: render thousands of fields cheaply, create TextFields only while editing, and keep row heights stable. No overlay is used, so text keeps the exact same position in view and edit modes."
 ---
 
 # Lazy Text Field API
