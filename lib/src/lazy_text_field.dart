@@ -912,32 +912,37 @@ class _EditorBody extends StatelessWidget {
 
     return Material(
       type: MaterialType.transparency,
-      child: ScrollConfiguration(
-        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (controller.text.isEmpty && hintText != null)
-              IgnorePointer(
-                child: Align(
-                  alignment: _alignmentFor(
-                    textAlign,
-                    Directionality.of(context),
-                  ),
-                  child: Text(
-                    hintText!,
-                    maxLines: singleLine ? 1 : null,
-                    overflow: singleLine
-                        ? TextOverflow.ellipsis
-                        : TextOverflow.clip,
-                    style: style.merge(hintStyle),
-                    textAlign: textAlign,
-                    textDirection: textDirection,
+      child: ScrollbarTheme(
+        data: ScrollbarTheme.of(
+          context,
+        ).copyWith(thickness: WidgetStateProperty.all(0)),
+        child: ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (controller.text.isEmpty && hintText != null)
+                IgnorePointer(
+                  child: Align(
+                    alignment: _alignmentFor(
+                      textAlign,
+                      Directionality.of(context),
+                    ),
+                    child: Text(
+                      hintText!,
+                      maxLines: singleLine ? 1 : null,
+                      overflow: singleLine
+                          ? TextOverflow.ellipsis
+                          : TextOverflow.clip,
+                      style: style.merge(hintStyle),
+                      textAlign: textAlign,
+                      textDirection: textDirection,
+                    ),
                   ),
                 ),
-              ),
-            field,
-          ],
+              field,
+            ],
+          ),
         ),
       ),
     );

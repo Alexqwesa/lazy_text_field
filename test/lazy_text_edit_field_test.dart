@@ -276,7 +276,7 @@ void main() {
     expect(find.byType(EditableText), findsOneWidget);
   });
 
-  testWidgets('bounded height: static mode reserves scrollbar gutter', (
+  testWidgets('bounded height uses package gutter scrollbar in edit mode', (
     tester,
   ) async {
     final controller = TextEditingController(
