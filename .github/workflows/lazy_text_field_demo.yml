@@ -23,16 +23,27 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      PAGES_TOKEN: ${{ secrets.PAGES_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - uses: actions/configure-pages@v5
+      - name: Configure GitHub Pages
+        if: env.PAGES_TOKEN == ''
+        uses: actions/configure-pages@v6
+
+      - name: Enable and configure GitHub Pages
+        if: env.PAGES_TOKEN != ''
+        uses: actions/configure-pages@v6
+        with:
+          enablement: true
+          token: ${{ env.PAGES_TOKEN }}
 
       - name: Install example dependencies
         working-directory: example
@@ -46,7 +57,7 @@ jobs:
         working-directory: example
         run: flutter build web --release --base-href /lazy_text_field/
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: example/build/web
 
@@ -59,5 +70,5 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v5
         id: deployment
