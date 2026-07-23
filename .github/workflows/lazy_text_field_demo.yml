@@ -38,6 +38,10 @@ jobs:
         working-directory: example
         run: flutter pub get
 
+      - name: Test example
+        working-directory: example
+        run: flutter test
+
       - name: Build web demo
         working-directory: example
         run: flutter build web --release --base-href /lazy_text_field/
