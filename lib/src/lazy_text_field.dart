@@ -56,6 +56,8 @@ class LazyTextField extends StatefulWidget {
     this.minHeight = 0,
     this.maxHeight,
     this.scrollbarGutter = 12,
+    this.scrollbarThickness = 6,
+    this.scrollbarAlignment = Alignment.centerRight,
     this.readOnlyAsLink = false,
     this.reservedTrailingWidth = 0,
     this.readOnlyOverflowExpanded = false,
@@ -118,6 +120,8 @@ class LazyTextField extends StatefulWidget {
   final double minHeight;
   final double? maxHeight;
   final double scrollbarGutter;
+  final double scrollbarThickness;
+  final AlignmentGeometry scrollbarAlignment;
   final bool readOnlyAsLink;
   final double reservedTrailingWidth;
   final bool readOnlyOverflowExpanded;
@@ -497,10 +501,14 @@ class _LazyTextFieldState extends State<LazyTextField> {
                 width: layout.reservedScrollbarWidth,
                 height: textAreaHeight,
                 child: needsScrollbar
-                    ? _GutterScrollbar(
-                        key: LazyTextFieldKeys.scrollbar(widget.cellId),
-                        controller: _scrollControllerFor(),
-                        viewportHeight: textAreaHeight,
+                    ? TextFieldTapRegion(
+                        child: _GutterScrollbar(
+                          key: LazyTextFieldKeys.scrollbar(widget.cellId),
+                          controller: _scrollControllerFor(),
+                          viewportHeight: textAreaHeight,
+                          thickness: widget.scrollbarThickness,
+                          alignment: widget.scrollbarAlignment,
+                        ),
                       )
                     : const SizedBox.shrink(),
               ),
@@ -1061,11 +1069,15 @@ class _GutterScrollbar extends StatelessWidget {
   const _GutterScrollbar({
     required this.controller,
     required this.viewportHeight,
+    required this.thickness,
+    required this.alignment,
     super.key,
   });
 
   final ScrollController controller;
   final double viewportHeight;
+  final double thickness;
+  final AlignmentGeometry alignment;
 
   @override
   Widget build(BuildContext context) {
@@ -1101,8 +1113,9 @@ class _GutterScrollbar extends StatelessWidget {
             theme.thumbColor?.resolve(const <WidgetState>{}) ??
             Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45);
         final radius = theme.radius ?? const Radius.circular(2);
-        final thickness =
-            theme.thickness?.resolve(const <WidgetState>{}) ?? 4.0;
+        final effectiveThickness = thickness > 0
+            ? thickness
+            : theme.thickness?.resolve(const <WidgetState>{}) ?? 4.0;
 
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -1127,9 +1140,10 @@ class _GutterScrollbar extends StatelessWidget {
             painter: _GutterScrollbarPainter(
               thumbOffset: thumbOffset,
               thumbExtent: thumbExtent,
-              thickness: thickness,
+              thickness: effectiveThickness,
               radius: radius,
               color: thumbColor,
+              alignment: alignment.resolve(Directionality.of(context)),
             ),
             child: const SizedBox.expand(),
           ),
@@ -1146,6 +1160,7 @@ class _GutterScrollbarPainter extends CustomPainter {
     required this.thickness,
     required this.radius,
     required this.color,
+    required this.alignment,
   });
 
   final double thumbOffset;
@@ -1153,11 +1168,16 @@ class _GutterScrollbarPainter extends CustomPainter {
   final double thickness;
   final Radius radius;
   final Color color;
+  final Alignment alignment;
 
   @override
   void paint(Canvas canvas, Size size) {
     final thumbRect = Rect.fromLTWH(
-      (size.width - thickness) / 2,
+      switch (alignment.x) {
+        <= -1 => 0,
+        >= 1 => size.width - thickness,
+        _ => (size.width - thickness) / 2,
+      },
       thumbOffset,
       thickness,
       thumbExtent,
@@ -1173,7 +1193,8 @@ class _GutterScrollbarPainter extends CustomPainter {
     return thumbOffset != oldDelegate.thumbOffset ||
         thumbExtent != oldDelegate.thumbExtent ||
         thickness != oldDelegate.thickness ||
-        color != oldDelegate.color;
+        color != oldDelegate.color ||
+        alignment != oldDelegate.alignment;
   }
 }
 

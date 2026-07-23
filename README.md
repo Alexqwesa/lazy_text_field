@@ -141,6 +141,10 @@ The layout path uses `TextPainter`, the effective text width, strut style, text
 direction, text scaler, a zero-width space for empty text and trailing newlines,
 and ceiled final heights.
 
+For bounded editing, `scrollbarGutter` reserves text width for the package
+scrollbar. Use `scrollbarThickness` and `scrollbarAlignment` to control the
+thumb size and where it sits inside that reserved gutter.
+
 ## API documentation
 
 Full API reference is published to [pub.dev/documentation](https://pub.dev/documentation/lazy_text_field/latest/)

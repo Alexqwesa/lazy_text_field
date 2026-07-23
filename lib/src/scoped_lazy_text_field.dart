@@ -26,6 +26,8 @@ class ScopedLazyTextField extends StatefulWidget {
     this.minHeight = 0,
     this.maxHeight,
     this.scrollbarGutter = 12,
+    this.scrollbarThickness = 6,
+    this.scrollbarAlignment = Alignment.centerRight,
     this.readOnlyAsLink = false,
     this.allowMultipleActiveEdits = false,
     this.onWillStartEditing,
@@ -44,6 +46,8 @@ class ScopedLazyTextField extends StatefulWidget {
   final double minHeight;
   final double? maxHeight;
   final double scrollbarGutter;
+  final double scrollbarThickness;
+  final AlignmentGeometry scrollbarAlignment;
   final bool readOnlyAsLink;
   final bool allowMultipleActiveEdits;
   final FutureOr<bool> Function()? onWillStartEditing;
@@ -96,6 +100,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       minHeight: widget.minHeight,
       maxHeight: widget.maxHeight,
       scrollbarGutter: widget.scrollbarGutter,
+      scrollbarThickness: widget.scrollbarThickness,
+      scrollbarAlignment: widget.scrollbarAlignment,
       readOnlyAsLink: widget.readOnlyAsLink,
       onStartEditing: () => unawaited(_startEditing(editController)),
       onSubmitted: (value) => unawaited(_save(value)),

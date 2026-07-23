@@ -23,6 +23,8 @@ class StatefulLazyTextField extends StatefulWidget {
     this.minHeight = 0,
     this.maxHeight,
     this.scrollbarGutter = 12,
+    this.scrollbarThickness = 6,
+    this.scrollbarAlignment = Alignment.centerRight,
     this.readOnlyAsLink = false,
     this.onWillStartEditing,
     this.onCancel,
@@ -40,6 +42,8 @@ class StatefulLazyTextField extends StatefulWidget {
   final double minHeight;
   final double? maxHeight;
   final double scrollbarGutter;
+  final double scrollbarThickness;
+  final AlignmentGeometry scrollbarAlignment;
   final bool readOnlyAsLink;
   final FutureOr<bool> Function()? onWillStartEditing;
   final VoidCallback? onCancel;
@@ -81,6 +85,8 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
       minHeight: widget.minHeight,
       maxHeight: widget.maxHeight,
       scrollbarGutter: widget.scrollbarGutter,
+      scrollbarThickness: widget.scrollbarThickness,
+      scrollbarAlignment: widget.scrollbarAlignment,
       readOnlyAsLink: widget.readOnlyAsLink,
       onStartEditing: () => unawaited(_startEditing()),
       onSubmitted: (value) => unawaited(_save(value)),

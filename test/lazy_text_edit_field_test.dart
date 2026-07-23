@@ -262,6 +262,7 @@ void main() {
 
     await tester.tap(find.byKey(LazyTextEditKeys.staticSurface(cellId)));
     await tester.pump();
+    await tester.pump();
 
     expect(find.byKey(LazyTextEditKeys.scrollbar(cellId)), findsNothing);
 
@@ -332,6 +333,8 @@ void main() {
             padding: padding,
             maxHeight: 40,
             scrollbarGutter: scrollbarGutter,
+            scrollbarThickness: 8,
+            scrollbarAlignment: Alignment.centerRight,
           ),
         ),
       ),
@@ -349,13 +352,76 @@ void main() {
 
     await tester.tap(find.byKey(LazyTextEditKeys.staticSurface(cellId)));
     await tester.pump();
+    await tester.pump();
 
     final editViewportSize = tester.getSize(
       find.byKey(LazyTextEditKeys.textViewport(cellId)),
     );
 
     expect(find.byKey(LazyTextEditKeys.scrollbar(cellId)), findsOneWidget);
+    final scrollbarPainter =
+        tester
+                .widgetList<CustomPaint>(find.byType(CustomPaint))
+                .map((paint) => paint.painter)
+                .where((painter) {
+                  try {
+                    final dynamic scrollbarPainter = painter;
+                    return scrollbarPainter.thickness == 8 &&
+                        scrollbarPainter.alignment == Alignment.centerRight;
+                  } on Object {
+                    return false;
+                  }
+                })
+                .single
+            as dynamic;
+    expect(scrollbarPainter.thickness, 8);
+    expect(scrollbarPainter.alignment, Alignment.centerRight);
     expect(editViewportSize.width, staticViewportSize.width);
+  });
+
+  testWidgets('dragging package gutter scrollbar keeps edit mode active', (
+    tester,
+  ) async {
+    final controller = TextEditingController(
+      text: 'line 1\nline 2\nline 3\nline 4\nline 5\nline 6',
+    );
+    final focusNode = FocusNode();
+
+    addTearDown(controller.dispose);
+    addTearDown(focusNode.dispose);
+
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: cellWidth,
+          height: 40,
+          child: _LazyCellHarness(
+            cellId: cellId,
+            controller: controller,
+            focusNode: focusNode,
+            text: controller.text,
+            style: textStyle,
+            padding: padding,
+            maxHeight: 40,
+            scrollbarGutter: scrollbarGutter,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(LazyTextEditKeys.staticSurface(cellId)));
+    await tester.pump();
+    await tester.pump();
+
+    final scrollbar = find.byKey(LazyTextEditKeys.scrollbar(cellId));
+    expect(scrollbar, findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+
+    await tester.drag(scrollbar, const Offset(0, 16));
+    await tester.pump();
+
+    expect(scrollbar, findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
   });
 
   testWidgets('overflow marker is larger and handles read-only toggle', (
@@ -1495,6 +1561,8 @@ class _LazyCellHarness extends StatefulWidget {
     required this.padding,
     required this.maxHeight,
     required this.scrollbarGutter,
+    this.scrollbarThickness = 6,
+    this.scrollbarAlignment = Alignment.centerRight,
     this.initiallyEditing = false,
     this.decoration,
   });
@@ -1507,6 +1575,8 @@ class _LazyCellHarness extends StatefulWidget {
   final EdgeInsetsGeometry padding;
   final double? maxHeight;
   final double scrollbarGutter;
+  final double scrollbarThickness;
+  final AlignmentGeometry scrollbarAlignment;
   final bool initiallyEditing;
   final LazyInputDecoration? decoration;
 
@@ -1548,6 +1618,8 @@ class _LazyCellHarnessState extends State<_LazyCellHarness> {
       decoration: widget.decoration,
       maxHeight: widget.maxHeight,
       scrollbarGutter: widget.scrollbarGutter,
+      scrollbarThickness: widget.scrollbarThickness,
+      scrollbarAlignment: widget.scrollbarAlignment,
       onStartEditing: () {
         setState(() {
           isEditing = true;
