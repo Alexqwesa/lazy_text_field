@@ -1,6 +1,6 @@
 name: lazy_text_field
 description: Pure-Flutter lazy text fields for table and grid cells with exact constrained-width height measurement.
-version: 1.0.0
+version: 1.0.1
 homepage: https://github.com/Alexqwesa/lazy_text_field
 repository: https://github.com/Alexqwesa/lazy_text_field
 issue_tracker: https://github.com/Alexqwesa/lazy_text_field/issues

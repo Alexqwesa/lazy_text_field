@@ -368,6 +368,99 @@ void main() {
     );
   });
 
+  testWidgets('custom overflow marker builder replaces marker visual', (
+    tester,
+  ) async {
+    var startEditCount = 0;
+    var toggleCount = 0;
+    LazyTextFieldOverflowMarkerDetails? capturedDetails;
+
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: 80,
+          child: LazyTextField(
+            cellId: cellId,
+            text: 'line 1\nline 2\nline 3\nline 4',
+            isEditing: false,
+            style: textStyle,
+            padding: padding,
+            maxHeight: 30,
+            decoration: null,
+            decorationVisibility: LazyInputDecorationVisibility.never,
+            overflowMarkerSize: 18,
+            overflowMarkerColor: Colors.purple,
+            overflowMarkerBuilder: (context, details) {
+              capturedDetails = details;
+              return const ColoredBox(
+                key: ValueKey('custom-overflow-marker'),
+                color: Colors.orange,
+              );
+            },
+            onStartEditing: () => startEditCount++,
+            onReadOnlyOverflowToggle: () => toggleCount++,
+          ),
+        ),
+      ),
+    );
+
+    final marker = find.byKey(const ValueKey('cell-overflow-corner-marker'));
+    expect(marker, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('custom-overflow-marker')),
+      findsOneWidget,
+    );
+    expect(tester.getSize(marker), const Size.square(18));
+    expect(capturedDetails?.size, 18);
+    expect(capturedDetails?.color, Colors.purple);
+    expect(capturedDetails?.expanded, isFalse);
+    expect(capturedDetails?.hasHiddenText, isTrue);
+    expect(capturedDetails?.onToggle, isNotNull);
+
+    await tester.tap(marker);
+    await tester.pump();
+
+    expect(toggleCount, 1);
+    expect(
+      startEditCount,
+      0,
+      reason: 'Tapping a custom overflow marker should not start editing.',
+    );
+  });
+
+  testWidgets('null overflow marker builder hides marker but keeps tooltip', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: 80,
+          child: LazyTextField(
+            cellId: cellId,
+            text: 'line 1\nline 2\nline 3\nline 4',
+            isEditing: false,
+            style: textStyle,
+            padding: padding,
+            maxHeight: 30,
+            decoration: null,
+            decorationVisibility: LazyInputDecorationVisibility.never,
+            overflowMarkerBuilder: null,
+            onReadOnlyOverflowToggle: () {},
+            onStartEditing: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('cell-overflow-corner-marker')),
+      findsNothing,
+    );
+
+    final tooltip = tester.widget<Tooltip>(find.byType(Tooltip));
+    expect(tooltip.ignorePointer, isTrue);
+  });
+
   testWidgets('expanded overflow marker remains visible without overflow', (
     tester,
   ) async {
@@ -400,6 +493,48 @@ void main() {
     );
     final markerPainter = markerPaint.painter! as dynamic;
     expect(markerPainter.outlined, isTrue);
+  });
+
+  testWidgets('custom overflow marker builder receives expanded state', (
+    tester,
+  ) async {
+    LazyTextFieldOverflowMarkerDetails? capturedDetails;
+
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: 80,
+          child: LazyTextField(
+            cellId: cellId,
+            text: 'short',
+            isEditing: false,
+            style: textStyle,
+            padding: padding,
+            maxHeight: 80,
+            decoration: null,
+            decorationVisibility: LazyInputDecorationVisibility.never,
+            readOnlyOverflowExpanded: true,
+            expandedOverflowMarkerColor: Colors.teal,
+            overflowMarkerBuilder: (context, details) {
+              capturedDetails = details;
+              return const SizedBox.expand(
+                key: ValueKey('expanded-custom-overflow-marker'),
+              );
+            },
+            onReadOnlyOverflowToggle: () {},
+            onStartEditing: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('expanded-custom-overflow-marker')),
+      findsOneWidget,
+    );
+    expect(capturedDetails?.expanded, isTrue);
+    expect(capturedDetails?.hasHiddenText, isFalse);
+    expect(capturedDetails?.color, Colors.teal);
   });
 
   testWidgets('overflow tooltip is transparent for pointer events', (

@@ -46,8 +46,8 @@ Explore the example app in the browser:
 
 [Open the live demo](https://alexqwesa.github.io/lazy_text_field/)
 
-The demo covers decoration modes, bounded height, prefix/suffix icons, and lazy
-controller allocation in a 1000-row list.
+The demo covers decoration modes, height modes, prefix icons, overflow markers,
+and lazy controller allocation in a multi-column table.
 
 ## Choose a widget
 
@@ -97,6 +97,32 @@ icon, and icon constraints.
 
 Decoration does not add padding. `LazyTextField.padding` is the only content
 padding source.
+
+## Overflow marker
+
+When read-only text is clipped, `LazyTextField` shows a default red corner
+marker. Customize it with `overflowMarkerBuilder`, or pass `null` to hide it:
+
+```dart
+LazyTextField(
+  cellId: 'row-42-notes',
+  text: value,
+  isEditing: false,
+  onStartEditing: startEditing,
+  overflowMarkerBuilder: (context, details) {
+    return Icon(
+      details.expanded ? Icons.unfold_less : Icons.more_horiz,
+      size: details.size,
+      color: details.color,
+    );
+  },
+)
+```
+
+The package still owns marker positioning and tap handling, so marker taps call
+`onReadOnlyOverflowToggle` without also starting cell editing. Use
+`LazyTextField.defaultOverflowMarkerBuilder` to delegate back to the default
+triangle from a custom builder.
 
 ## Height Measurement
 

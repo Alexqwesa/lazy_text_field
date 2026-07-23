@@ -7,6 +7,30 @@ import 'package:lazy_text_field/src/lazy_text_field_keys.dart';
 import 'package:lazy_text_field/src/lazy_text_field_layout.dart';
 import 'package:lazy_text_field/src/lazy_text_field_metrics.dart';
 
+/// Builds the read-only overflow marker shown when static text is clipped.
+typedef LazyTextFieldOverflowMarkerBuilder =
+    Widget Function(
+      BuildContext context,
+      LazyTextFieldOverflowMarkerDetails details,
+    );
+
+/// State passed to [LazyTextFieldOverflowMarkerBuilder].
+class LazyTextFieldOverflowMarkerDetails {
+  const LazyTextFieldOverflowMarkerDetails({
+    required this.size,
+    required this.color,
+    required this.expanded,
+    required this.hasHiddenText,
+    required this.onToggle,
+  });
+
+  final double size;
+  final Color color;
+  final bool expanded;
+  final bool hasHiddenText;
+  final VoidCallback? onToggle;
+}
+
 /// A table/grid cell that stays lazy in read-only mode and mounts a real
 /// [TextField] only while editing.
 ///
@@ -39,6 +63,7 @@ class LazyTextField extends StatefulWidget {
     this.overflowMarkerSize = 14,
     this.overflowMarkerColor,
     this.expandedOverflowMarkerColor,
+    this.overflowMarkerBuilder = LazyTextField.defaultOverflowMarkerBuilder,
     this.onCalendarPressed,
     this.onChanged,
     this.onSubmitted,
@@ -100,6 +125,7 @@ class LazyTextField extends StatefulWidget {
   final double overflowMarkerSize;
   final Color? overflowMarkerColor;
   final Color? expandedOverflowMarkerColor;
+  final LazyTextFieldOverflowMarkerBuilder? overflowMarkerBuilder;
   final VoidCallback? onCalendarPressed;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
@@ -162,6 +188,17 @@ class LazyTextField extends StatefulWidget {
       maxHeight: maxHeight,
       scrollbarGutter: scrollbarGutter,
       editableTextGutter: _editableTextGutter(cursorWidth),
+    );
+  }
+
+  /// Builds the default read-only overflow corner marker.
+  static Widget defaultOverflowMarkerBuilder(
+    BuildContext context,
+    LazyTextFieldOverflowMarkerDetails details,
+  ) {
+    return _DefaultOverflowCornerMarker(
+      color: details.color,
+      outlined: details.expanded,
     );
   }
 
@@ -433,6 +470,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
                     overflowMarkerColor: widget.overflowMarkerColor,
                     expandedOverflowMarkerColor:
                         widget.expandedOverflowMarkerColor,
+                    overflowMarkerBuilder: widget.overflowMarkerBuilder,
                     hintText: decorationVisible ? decoration?.hintText : null,
                     hintStyle: decoration?.hintStyle,
                   ),
@@ -579,6 +617,7 @@ class _StaticTextBody extends StatelessWidget {
     this.onOverflowToggle,
     this.overflowMarkerColor,
     this.expandedOverflowMarkerColor,
+    this.overflowMarkerBuilder,
     this.hintText,
     this.hintStyle,
   });
@@ -596,6 +635,7 @@ class _StaticTextBody extends StatelessWidget {
   final double overflowMarkerSize;
   final Color? overflowMarkerColor;
   final Color? expandedOverflowMarkerColor;
+  final LazyTextFieldOverflowMarkerBuilder? overflowMarkerBuilder;
   final String? hintText;
   final TextStyle? hintStyle;
 
@@ -640,22 +680,32 @@ class _StaticTextBody extends StatelessWidget {
       final hasHiddenText = overflowsWidth || overflowsHeight;
 
       if (hasHiddenText || overflowExpanded) {
-        final marker = _OverflowCornerMarker(
+        final markerColor = overflowExpanded
+            ? expandedOverflowMarkerColor ?? Colors.red
+            : overflowMarkerColor ?? Colors.red;
+        final markerDetails = LazyTextFieldOverflowMarkerDetails(
           size: overflowMarkerSize,
-          color: overflowExpanded
-              ? expandedOverflowMarkerColor ?? Colors.red
-              : overflowMarkerColor ?? Colors.red,
-          outlined: overflowExpanded,
-          onTap: onOverflowToggle,
+          color: markerColor,
+          expanded: overflowExpanded,
+          hasHiddenText: hasHiddenText,
+          onToggle: onOverflowToggle,
         );
 
-        body = Stack(
-          fit: StackFit.passthrough,
-          children: [
-            paintedText,
-            Positioned(right: 0, bottom: 0, child: marker),
-          ],
-        );
+        final markerBuilder = overflowMarkerBuilder;
+        if (markerBuilder != null) {
+          final marker = _OverflowCornerMarker(
+            details: markerDetails,
+            builder: markerBuilder,
+          );
+
+          body = Stack(
+            fit: StackFit.passthrough,
+            children: [
+              paintedText,
+              Positioned(right: 0, bottom: 0, child: marker),
+            ],
+          );
+        }
 
         if (hasHiddenText) {
           body = Tooltip(
@@ -1121,29 +1171,38 @@ class _GutterScrollbarPainter extends CustomPainter {
 }
 
 class _OverflowCornerMarker extends StatelessWidget {
-  const _OverflowCornerMarker({
-    required this.size,
-    required this.color,
-    required this.outlined,
-    this.onTap,
-  });
+  const _OverflowCornerMarker({required this.details, required this.builder});
 
-  final double size;
-  final Color color;
-  final bool outlined;
-  final VoidCallback? onTap;
+  final LazyTextFieldOverflowMarkerDetails details;
+  final LazyTextFieldOverflowMarkerBuilder builder;
 
   @override
   Widget build(BuildContext context) {
-    final marker = CustomPaint(
-      size: Size.square(size),
-      painter: _OverflowCornerMarkerPainter(color: color, outlined: outlined),
-    );
     return GestureDetector(
       key: const ValueKey('cell-overflow-corner-marker'),
       behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox.square(dimension: size, child: marker),
+      onTap: details.onToggle,
+      child: SizedBox.square(
+        dimension: details.size,
+        child: builder(context, details),
+      ),
+    );
+  }
+}
+
+class _DefaultOverflowCornerMarker extends StatelessWidget {
+  const _DefaultOverflowCornerMarker({
+    required this.color,
+    required this.outlined,
+  });
+
+  final Color color;
+  final bool outlined;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _OverflowCornerMarkerPainter(color: color, outlined: outlined),
     );
   }
 }
