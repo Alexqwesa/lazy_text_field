@@ -40,6 +40,38 @@ Use `LazyTextField` when you render hundreds or thousands of editable cells and
 need predictable memory use, stable row heights, and pixel-aligned transitions
 between read-only and edit modes.
 
+## The real cost is the mounted `TextField`
+
+For big tables and grids, the expensive part is not just text painting. The
+cost appears when every visible cell mounts a real `TextField`.
+
+A Flutter `TextField` builds an `EditableText`. `EditableTextState` participates
+in a lot of editing infrastructure, including:
+
+- `TextInputClient`
+- `AutofillClient`
+- `WidgetsBindingObserver`
+- `TickerProviderStateMixin`
+- `AutomaticKeepAliveClientMixin`
+- text-selection behavior
+- clipboard monitoring
+- spell-check behavior
+- cursor animation
+- scrolling
+- keyboard input connection
+- selection overlays and context menus
+
+During initialization, `EditableTextState` registers controller and focus
+listeners, clipboard listeners, lifecycle handling, spell-check configuration,
+and other editing infrastructure. `EditableText` also handles keyboard input
+through the platform text-input service, selection and cursor movement, keeping
+the caret visible, scrolling, input formatters, selection menus, and gestures.
+
+That is all correct for the active editor. It is unnecessary for thousands of
+read-only cells. `LazyTextField` keeps the table cheap by rendering static cells
+with a lightweight text path, then mounting the real `TextField` only for the
+cell currently being edited.
+
 ## Live demo
 
 Explore the example app in the browser:
