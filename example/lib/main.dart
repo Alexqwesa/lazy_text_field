@@ -276,8 +276,12 @@ class _LazyTextFieldExampleScreenState
       decoration: _decoration(context, column),
       decorationVisibility: _visibility,
       maxHeight: isFixedHeight ? _fieldHeight : null,
-      reservedTrailingWidth: isFixedHeight ? 0 : _scrollbarGutter,
-      scrollbarGutter: _scrollbarGutter,
+      // Keep text width identical in static and edit. Reserving scrollbar
+      // gutter only while maxHeight is set (onEditFull static) widens the
+      // viewport on edit and changes soft-wrap. Only "Fixed" mode uses the
+      // internal scrollbar gutter in both modes.
+      reservedTrailingWidth: 0,
+      scrollbarGutter: _heightMode == _HeightMode.fixed ? _scrollbarGutter : 0,
       onStartEditing: () => _startEditing(cellId, value),
       onStartEditingWithDetails: (details) =>
           _startEditing(cellId, value, textOffset: details.textOffset),
@@ -403,7 +407,7 @@ class _Toolbar extends StatelessWidget {
     required this.onItalicChanged,
   });
 
-  static const _fontSizes = <double>[12, 14, 16, 18, 20, 24];
+  static const _fontSizes = <double>[10, 11, 12, 13, 14, 15, 16];
 
   final LazyInputDecorationVisibility visibility;
   final _HeightMode heightMode;

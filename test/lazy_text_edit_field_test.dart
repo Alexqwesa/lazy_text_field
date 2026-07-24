@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -1566,6 +1566,260 @@ void main() {
     },
   );
 
+  testWidgets('unbroken lll text keeps the same word wrap after edit switch', (
+    tester,
+  ) async {
+    // Soft-wrap of a single long token is pixel-sensitive. Assert both wrap
+    // break offsets AND text viewport width: onEditFull previously grew the
+    // viewport by ~2px (scrollbar gutter while static-only maxHeight), which
+    // often left Ahem line lengths unchanged and hid the bug.
+    const longLText =
+        'lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll'
+        'lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll';
+    const demoPadding = EdgeInsets.symmetric(horizontal: 10, vertical: 8);
+    const fieldHeight = 58.0;
+    const fontSizes = <double>[10, 11, 12, 13, 14, 15, 16];
+
+    final controller = TextEditingController(text: longLText);
+    final focusNode = FocusNode();
+
+    addTearDown(controller.dispose);
+    addTearDown(focusNode.dispose);
+
+    Future<void> expectWrapStable({
+      required double fontSize,
+      required double cellWidth,
+      required double? staticMaxHeight,
+      required double? editMaxHeight,
+      required double scrollbarGutterForMode,
+      required String label,
+    }) async {
+      final demoStyle = TextStyle(
+        fontFamily: 'Ahem',
+        fontSize: fontSize,
+        height: 1.25,
+        letterSpacing: 0,
+      );
+
+      var isEditing = false;
+
+      Future<void> pumpHarness() async {
+        await tester.pumpWidget(
+          _TestApp(
+            child: SizedBox(
+              width: cellWidth,
+              child: LazyTextField(
+                cellId: cellId,
+                text: longLText,
+                isEditing: isEditing,
+                controller: isEditing ? controller : null,
+                focusNode: isEditing ? focusNode : null,
+                style: demoStyle,
+                padding: demoPadding,
+                decoration: const LazyInputDecoration(
+                  prefixIcon: Icon(Icons.subject, size: 16),
+                  prefixIconConstraints: BoxConstraints(minWidth: 30),
+                ),
+                decorationVisibility: LazyInputDecorationVisibility.always,
+                maxHeight: isEditing ? editMaxHeight : staticMaxHeight,
+                reservedTrailingWidth: 0,
+                scrollbarGutter: scrollbarGutterForMode,
+                onStartEditing: () {},
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+      }
+
+      isEditing = false;
+      await pumpHarness();
+
+      final staticViewportRect = tester.getRect(
+        find.byKey(LazyTextFieldKeys.textViewport(cellId)),
+      );
+      final staticRootHeight = tester
+          .getSize(find.byKey(LazyTextFieldKeys.root(cellId)))
+          .height;
+
+      final staticPainter = _layoutStaticPainter(
+        text: longLText,
+        style: demoStyle,
+        width: staticViewportRect.width,
+      );
+      final staticWrapBreaks = _softWrapBreakOffsets(staticPainter, longLText);
+
+      expect(
+        staticWrapBreaks.length,
+        greaterThan(2),
+        reason:
+            '$label fontSize=$fontSize must wrap onto multiple lines '
+            '(breaks=$staticWrapBreaks, vp=${staticViewportRect.width})',
+      );
+
+      isEditing = true;
+      await pumpHarness();
+
+      final editViewportRect = tester.getRect(
+        find.byKey(LazyTextFieldKeys.textViewport(cellId)),
+      );
+      final editRootHeight = tester
+          .getSize(find.byKey(LazyTextFieldKeys.root(cellId)))
+          .height;
+
+      expect(
+        editViewportRect.width,
+        staticViewportRect.width,
+        reason:
+            '$label fontSize=$fontSize text viewport width changed '
+            '(static=${staticViewportRect.width}, edit=${editViewportRect.width})',
+      );
+      if (staticMaxHeight == null && editMaxHeight == null) {
+        expect(
+          editRootHeight,
+          closeTo(staticRootHeight, 0.01),
+          reason: '$label fontSize=$fontSize root height changed',
+        );
+      }
+
+      final renderEditable = tester.renderObject<RenderEditable>(
+        _findRenderEditableInside(cellId),
+      );
+      final editWrapBreaks = _editSoftWrapBreakOffsets(
+        renderEditable,
+        longLText,
+      );
+
+      expect(
+        editWrapBreaks,
+        staticWrapBreaks,
+        reason:
+            '$label fontSize=$fontSize soft-wrap break offsets changed '
+            '(static=$staticWrapBreaks, edit=$editWrapBreaks)',
+      );
+
+      isEditing = false;
+      await pumpHarness();
+
+      final staticAgainViewport = tester.getRect(
+        find.byKey(LazyTextFieldKeys.textViewport(cellId)),
+      );
+      expect(
+        staticAgainViewport.width,
+        staticViewportRect.width,
+        reason: '$label fontSize=$fontSize viewport changed after leaving edit',
+      );
+      final staticAgainPainter = _layoutStaticPainter(
+        text: longLText,
+        style: demoStyle,
+        width: staticAgainViewport.width,
+      );
+      expect(
+        _softWrapBreakOffsets(staticAgainPainter, longLText),
+        staticWrapBreaks,
+        reason: '$label fontSize=$fontSize wrap changed after leaving edit',
+      );
+    }
+
+    for (final fontSize in fontSizes) {
+      // Full-height path: same constraints in static and edit.
+      // Target text viewport = fs*11+1 (gutter-sensitive for Ahem).
+      final fullViewport = fontSize * 11 + 1;
+      final fullCellWidth = fullViewport + 30 + demoPadding.horizontal;
+      await expectWrapStable(
+        fontSize: fontSize,
+        cellWidth: fullCellWidth,
+        staticMaxHeight: null,
+        editMaxHeight: null,
+        scrollbarGutterForMode: scrollbarGutter,
+        label: 'full-height',
+      );
+
+      // Example onEditFull: clip while static, expand while editing.
+      // Scrollbar gutter must stay 0 here; reserving it only while static
+      // (maxHeight set) widens the viewport on edit by ~2px.
+      await expectWrapStable(
+        fontSize: fontSize,
+        cellWidth: 280,
+        staticMaxHeight: fieldHeight,
+        editMaxHeight: null,
+        scrollbarGutterForMode: 0,
+        label: 'onEditFull',
+      );
+    }
+
+    // Guard: the old example pattern (scrollbar gutter + static-only maxHeight)
+    // changes viewport width — that is the wrap bug source.
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: 280,
+          child: LazyTextField(
+            cellId: 'bug-pattern',
+            text: longLText,
+            isEditing: false,
+            style: const TextStyle(
+              fontFamily: 'Ahem',
+              fontSize: 14,
+              height: 1.25,
+            ),
+            padding: demoPadding,
+            decoration: const LazyInputDecoration(
+              prefixIcon: Icon(Icons.subject, size: 16),
+              prefixIconConstraints: BoxConstraints(minWidth: 30),
+            ),
+            decorationVisibility: LazyInputDecorationVisibility.always,
+            maxHeight: fieldHeight,
+            scrollbarGutter: scrollbarGutter,
+            onStartEditing: () {},
+          ),
+        ),
+      ),
+    );
+    final buggyStaticVp = tester
+        .getSize(find.byKey(LazyTextFieldKeys.textViewport('bug-pattern')))
+        .width;
+
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: 280,
+          child: LazyTextField(
+            cellId: 'bug-pattern',
+            text: longLText,
+            isEditing: true,
+            controller: controller,
+            focusNode: focusNode,
+            style: const TextStyle(
+              fontFamily: 'Ahem',
+              fontSize: 14,
+              height: 1.25,
+            ),
+            padding: demoPadding,
+            decoration: const LazyInputDecoration(
+              prefixIcon: Icon(Icons.subject, size: 16),
+              prefixIconConstraints: BoxConstraints(minWidth: 30),
+            ),
+            decorationVisibility: LazyInputDecorationVisibility.always,
+            maxHeight: null,
+            scrollbarGutter: scrollbarGutter,
+            onStartEditing: () {},
+          ),
+        ),
+      ),
+    );
+    final buggyEditVp = tester
+        .getSize(find.byKey(LazyTextFieldKeys.textViewport('bug-pattern')))
+        .width;
+    expect(
+      buggyEditVp,
+      isNot(buggyStaticVp),
+      reason:
+          'expected static-only maxHeight + scrollbarGutter to change viewport '
+          '(static=$buggyStaticVp, edit=$buggyEditVp); if equal, revisit fixture',
+    );
+  });
+
   testWidgets('edit mode right click shows text selection toolbar', (
     tester,
   ) async {
@@ -1921,6 +2175,7 @@ class _LazyCellHarness extends StatefulWidget {
     this.scrollbarAlignment = LazyTextField.defaultScrollbarAlignment,
     this.initiallyEditing = false,
     this.decoration,
+    this.stopEditingOnTapOutside = false,
   });
 
   final String cellId;
@@ -1935,6 +2190,7 @@ class _LazyCellHarness extends StatefulWidget {
   final AlignmentGeometry scrollbarAlignment;
   final bool initiallyEditing;
   final LazyInputDecoration? decoration;
+  final bool stopEditingOnTapOutside;
 
   @override
   State<_LazyCellHarness> createState() => _LazyCellHarnessState();
@@ -1959,6 +2215,13 @@ class _LazyCellHarnessState extends State<_LazyCellHarness> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void stopEditing() {
+    if (!isEditing) return;
+    setState(() {
+      isEditing = false;
+    });
   }
 
   @override
@@ -1986,6 +2249,13 @@ class _LazyCellHarnessState extends State<_LazyCellHarness> {
           isEditing = false;
         });
       },
+      onTapOutside: widget.stopEditingOnTapOutside
+          ? (_) {
+              setState(() {
+                isEditing = false;
+              });
+            }
+          : null,
     );
   }
 }
@@ -2067,6 +2337,45 @@ TextPainter _layoutStaticPainter({
     textScaler: TextScaler.noScaling,
     strutStyle: StrutStyle.fromTextStyle(style),
   )..layout(maxWidth: math.max(0, width - 3));
+}
+
+/// Soft-wrap line start offsets for [text], ending with [text.length].
+List<int> _softWrapBreakOffsets(TextPainter painter, String text) {
+  final measured = LazyTextFieldLayout.measureText(text);
+  final breaks = <int>[0];
+  var offset = 0;
+  while (offset < measured.length) {
+    final boundary = painter.getLineBoundary(TextPosition(offset: offset));
+    final end = boundary.end;
+    if (end <= offset) {
+      breaks.add(measured.length);
+      break;
+    }
+    breaks.add(end > text.length ? text.length : end);
+    offset = end;
+  }
+  return breaks;
+}
+
+List<int> _editSoftWrapBreakOffsets(
+  RenderEditable renderEditable,
+  String text,
+) {
+  final breaks = <int>[0];
+  var offset = 0;
+  while (offset < text.length) {
+    final boundary = renderEditable.getLineAtOffset(
+      TextPosition(offset: offset),
+    );
+    final end = boundary.end;
+    if (end <= offset) {
+      breaks.add(text.length);
+      break;
+    }
+    breaks.add(end);
+    offset = end;
+  }
+  return breaks;
 }
 
 Finder _findRenderEditableInside(String cellId) {

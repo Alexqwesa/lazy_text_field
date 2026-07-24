@@ -31,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clarified that `reservedTrailingWidth` is for extra non-decoration chrome;
   prefix/suffix icons should use `LazyInputDecoration` icon slots.
 
+### Fixed
+
+- Hard-to-find soft-wrap drift between static and edit modes when
+  `maxHeight` / scrollbar gutter reservations differed across the switch
+  (notably example `onEditFull`). Viewport width and wrap breaks are now
+  covered by regression tests for font sizes 10–16.
+
 
 ## [1.0.0] - 2026-07-23
 
