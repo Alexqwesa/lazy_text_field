@@ -1,0 +1,119 @@
+# CI on main/PRs; publish to pub.dev on version tags after checks pass.
+#
+# One-time pub.dev setup:
+#   pub.dev → package → Admin → Automated publishing
+#   → GitHub Actions: enable for Alexqwesa/lazy_text_field
+#   → tag pattern: v{{version}}
+#   → (optional) require environment: pub.dev
+# https://dart.dev/tools/pub/automated-publishing
+#
+# Release:
+#   git tag v1.0.2
+#   git push origin v1.0.2
+# pubspec version must match the tag (without the leading v).
+
+name: CI / Publish
+
+on:
+  push:
+    branches: [main, master]
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  pull_request:
+    branches: [main, master]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check formatting
+        run: dart format --set-exit-if-changed .
+
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --fatal-infos
+
+  test:
+    name: Test
+    needs: [format, analyze]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Test with coverage
+        run: flutter test --coverage
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
+
+  publish:
+    name: Publish to pub.dev
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: pub.dev
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # OIDC token for pub.dev automated publishing (must run before publish).
+      - uses: dart-lang/setup-dart@v1
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Dry-run
+        run: dart pub publish --dry-run
+
+      - name: Publish
+        run: dart pub publish --force
