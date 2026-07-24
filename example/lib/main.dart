@@ -76,6 +76,9 @@ class _LazyTextFieldExampleScreenState
   LazyTextFieldStartEditSelection _startEditSelection =
       LazyTextFieldStartEditSelection.tapPosition;
   bool _showIcons = true;
+  double _fontSize = 14;
+  bool _bold = false;
+  bool _italic = false;
 
   @override
   void dispose() {
@@ -109,6 +112,9 @@ class _LazyTextFieldExampleScreenState
             heightMode: _heightMode,
             startEditSelection: _startEditSelection,
             showIcons: _showIcons,
+            fontSize: _fontSize,
+            bold: _bold,
+            italic: _italic,
             activeLabel: activeLabel,
             onVisibilityChanged: (value) {
               setState(() {
@@ -128,6 +134,21 @@ class _LazyTextFieldExampleScreenState
             onShowIconsChanged: (value) {
               setState(() {
                 _showIcons = value;
+              });
+            },
+            onFontSizeChanged: (value) {
+              setState(() {
+                _fontSize = value;
+              });
+            },
+            onBoldChanged: (value) {
+              setState(() {
+                _bold = value;
+              });
+            },
+            onItalicChanged: (value) {
+              setState(() {
+                _italic = value;
               });
             },
           ),
@@ -245,7 +266,12 @@ class _LazyTextFieldExampleScreenState
       isEditing: isEditing,
       controller: isEditing ? _controller : null,
       focusNode: isEditing ? _focusNode : null,
-      style: const TextStyle(fontSize: 14, height: 1.25),
+      style: TextStyle(
+        fontSize: _fontSize,
+        height: 1.25,
+        fontWeight: _bold ? FontWeight.w700 : FontWeight.w400,
+        fontStyle: _italic ? FontStyle.italic : FontStyle.normal,
+      ),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: _decoration(context, column),
       decorationVisibility: _visibility,
@@ -293,7 +319,9 @@ class _LazyTextFieldExampleScreenState
       focusedBorder: focusedBorder,
       hintText: 'Click to edit',
       hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
-      prefixIcon: _showIcons ? Icon(column.icon, size: 16) : null,
+      prefixIcon: _showIcons
+          ? Icon(column.icon, size: (_fontSize + 2).clamp(14, 22))
+          : null,
       prefixIconConstraints: const BoxConstraints(minWidth: 30),
     );
   }
@@ -362,23 +390,37 @@ class _Toolbar extends StatelessWidget {
     required this.heightMode,
     required this.startEditSelection,
     required this.showIcons,
+    required this.fontSize,
+    required this.bold,
+    required this.italic,
     required this.activeLabel,
     required this.onVisibilityChanged,
     required this.onHeightModeChanged,
     required this.onStartEditSelectionChanged,
     required this.onShowIconsChanged,
+    required this.onFontSizeChanged,
+    required this.onBoldChanged,
+    required this.onItalicChanged,
   });
+
+  static const _fontSizes = <double>[12, 14, 16, 18, 20, 24];
 
   final LazyInputDecorationVisibility visibility;
   final _HeightMode heightMode;
   final LazyTextFieldStartEditSelection startEditSelection;
   final bool showIcons;
+  final double fontSize;
+  final bool bold;
+  final bool italic;
   final String activeLabel;
   final ValueChanged<LazyInputDecorationVisibility> onVisibilityChanged;
   final ValueChanged<_HeightMode> onHeightModeChanged;
   final ValueChanged<LazyTextFieldStartEditSelection>
   onStartEditSelectionChanged;
   final ValueChanged<bool> onShowIconsChanged;
+  final ValueChanged<double> onFontSizeChanged;
+  final ValueChanged<bool> onBoldChanged;
+  final ValueChanged<bool> onItalicChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -482,6 +524,63 @@ class _Toolbar extends StatelessWidget {
                 selected: showIcons,
                 onSelected: onShowIconsChanged,
               ),
+            ),
+            SizedBox(
+              width: 148,
+              child: DropdownMenu<double>(
+                key: ValueKey(fontSize),
+                initialSelection: fontSize,
+                label: const Text('Font size'),
+                leadingIcon: const Icon(Icons.format_size),
+                inputDecorationTheme: const InputDecorationTheme(
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                ),
+                dropdownMenuEntries: [
+                  for (final size in _fontSizes)
+                    DropdownMenuEntry<double>(
+                      value: size,
+                      label: '${size.toInt()}',
+                    ),
+                ],
+                onSelected: (value) {
+                  if (value != null) {
+                    onFontSizeChanged(value);
+                  }
+                },
+              ),
+            ),
+            PopupMenuButton<_TextStyleAction>(
+              tooltip: 'Text styles',
+              icon: Icon(
+                Icons.text_fields,
+                color: bold || italic
+                    ? Theme.of(context).colorScheme.primary
+                    : null,
+              ),
+              itemBuilder: (context) {
+                return [
+                  CheckedPopupMenuItem<_TextStyleAction>(
+                    value: _TextStyleAction.bold,
+                    checked: bold,
+                    child: const Text('Bold'),
+                  ),
+                  CheckedPopupMenuItem<_TextStyleAction>(
+                    value: _TextStyleAction.italic,
+                    checked: italic,
+                    child: const Text('Italic'),
+                  ),
+                ];
+              },
+              onSelected: (action) {
+                switch (action) {
+                  case _TextStyleAction.bold:
+                    onBoldChanged(!bold);
+                  case _TextStyleAction.italic:
+                    onItalicChanged(!italic);
+                }
+              },
             ),
             SizedBox(
               width: 260,
@@ -635,6 +734,8 @@ enum _DemoColumn {
 }
 
 enum _HeightMode { fixed, full, onEditFull }
+
+enum _TextStyleAction { bold, italic }
 
 abstract final class _LazyWidths {
   static const rowNumber = _LazyTextFieldExampleScreenState._rowNumberWidth;

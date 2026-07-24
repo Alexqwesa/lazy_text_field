@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `LazyTextField.onCalendarPressed` and the built-in calendar trailing button.
   Use `LazyInputDecoration.suffixIcon` instead.
+- Deprecated `LazyTextEditField`, `LazyTextEditKeys`, and `LazyTextEditLayout`
+  typedef shims. Use `LazyTextField`, `LazyTextFieldKeys`, and
+  `LazyTextFieldLayout`.
 
 ### Changed
 

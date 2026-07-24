@@ -27,11 +27,10 @@ selection behavior in wrapper/app packages.
 - Use a real `TextField` in edit mode, but always pass `decoration: null`.
 - Draw `LazyInputDecoration` outside the `TextField`; do not use
   `InputDecorator` for `LazyTextField`.
-- Keep `padding` as the single content-padding source. Decoration must not add
+- Keep `padding` as the single content-padding source. Decorations must not add
   layout padding.
-- Preserve deprecated `LazyTextEditField`, `LazyTextEditLayout`, and
-  `LazyTextEditKeys` shims unless the user explicitly requests a breaking
-  cleanup.
+- Prefer `LazyTextField`, `LazyTextFieldKeys`, and `LazyTextFieldLayout` names.
+  Do not reintroduce old `LazyTextEdit*` shims.
 
 ## Height Measurement
 
@@ -45,7 +44,7 @@ selection behavior in wrapper/app packages.
 - When changing text layout, compare static and edit mode positions, not only
   sizes.
 
-## Decoration
+## Decorations
 
 `LazyInputDecoration` is intentionally a height-neutral subset of
 `InputDecoration`. Support fill, hover/focus colors, enabled/focused/error/

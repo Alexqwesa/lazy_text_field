@@ -7,9 +7,6 @@
 library;
 
 export 'src/lazy_input_decoration.dart';
-export 'src/lazy_text_edit_field.dart';
-export 'src/lazy_text_edit_keys.dart';
-export 'src/lazy_text_edit_layout.dart';
 export 'src/lazy_text_field.dart';
 export 'src/lazy_text_field_controller_scope.dart';
 export 'src/lazy_text_field_edit_controller.dart';

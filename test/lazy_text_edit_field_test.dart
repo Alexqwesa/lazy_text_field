@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -29,29 +29,8 @@ void main() {
     await loader.load();
   });
 
-  test('deprecated lazy text edit names forward to lazy text field names', () {
-    final layout = LazyTextEditLayout.compute(
-      text: 'one',
-      width: cellWidth,
-      padding: padding,
-      singleLine: false,
-      style: textStyle,
-    );
-    final renamedLayout = LazyTextFieldLayout.compute(
-      text: 'one',
-      width: cellWidth,
-      padding: padding,
-      singleLine: false,
-      style: textStyle,
-    );
-
-    expect(layout.height, renamedLayout.height);
-    expect(LazyTextEditField, LazyTextField);
-    expect(LazyTextEditKeys.root(cellId), LazyTextFieldKeys.root(cellId));
-  });
-
   test('compute reserves scrollbar gutter when height is bounded', () {
-    final layout = LazyTextEditLayout.compute(
+    final layout = LazyTextFieldLayout.compute(
       text: 'line 1\nline 2\nline 3\nline 4\nline 5\nline 6',
       width: cellWidth,
       padding: padding,
@@ -114,7 +93,7 @@ void main() {
       ),
     );
 
-    final layout = LazyTextEditField.measure(
+    final layout = LazyTextField.measure(
       capturedContext,
       text: 'one\ntwo\nthree',
       width: cellWidth,
@@ -148,7 +127,7 @@ void main() {
 
     const text = 'aaaa aaaa aaaa aaaa aaaa aaaa';
 
-    final layout = LazyTextEditField.measure(
+    final layout = LazyTextField.measure(
       capturedContext,
       text: text,
       width: 80,
@@ -183,7 +162,7 @@ void main() {
       ),
     );
 
-    final layout = LazyTextEditField.measure(
+    final layout = LazyTextField.measure(
       capturedContext,
       text: '',
       width: cellWidth,
@@ -210,7 +189,7 @@ void main() {
       ),
     );
 
-    final layout = LazyTextEditField.measure(
+    final layout = LazyTextField.measure(
       capturedContext,
       text: 'one\n',
       width: cellWidth,
@@ -255,20 +234,20 @@ void main() {
       ),
     );
 
-    expect(find.byKey(LazyTextEditKeys.scrollbar(cellId)), findsNothing);
+    expect(find.byKey(LazyTextFieldKeys.scrollbar(cellId)), findsNothing);
 
     final staticRootRect = tester.getRect(
-      find.byKey(LazyTextEditKeys.root(cellId)),
+      find.byKey(LazyTextFieldKeys.root(cellId)),
     );
 
-    await tester.tap(find.byKey(LazyTextEditKeys.staticSurface(cellId)));
+    await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
     await tester.pump();
     await tester.pump();
 
-    expect(find.byKey(LazyTextEditKeys.scrollbar(cellId)), findsNothing);
+    expect(find.byKey(LazyTextFieldKeys.scrollbar(cellId)), findsNothing);
 
     final editRootRect = tester.getRect(
-      find.byKey(LazyTextEditKeys.root(cellId)),
+      find.byKey(LazyTextFieldKeys.root(cellId)),
     );
 
     _expectRectClose(editRootRect, staticRootRect);
@@ -415,24 +394,24 @@ void main() {
     );
 
     final staticViewportSize = tester.getSize(
-      find.byKey(LazyTextEditKeys.textViewport(cellId)),
+      find.byKey(LazyTextFieldKeys.textViewport(cellId)),
     );
 
-    expect(find.byKey(LazyTextEditKeys.scrollbar(cellId)), findsNothing);
+    expect(find.byKey(LazyTextFieldKeys.scrollbar(cellId)), findsNothing);
     expect(
       staticViewportSize.width,
       cellWidth - padding.left - scrollbarGutter,
     );
 
-    await tester.tap(find.byKey(LazyTextEditKeys.staticSurface(cellId)));
+    await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
     await tester.pump();
     await tester.pump();
 
     final editViewportSize = tester.getSize(
-      find.byKey(LazyTextEditKeys.textViewport(cellId)),
+      find.byKey(LazyTextFieldKeys.textViewport(cellId)),
     );
 
-    expect(find.byKey(LazyTextEditKeys.scrollbar(cellId)), findsOneWidget);
+    expect(find.byKey(LazyTextFieldKeys.scrollbar(cellId)), findsOneWidget);
     final scrollbarPainter =
         tester
                 .widgetList<CustomPaint>(find.byType(CustomPaint))
@@ -483,7 +462,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(LazyTextEditKeys.staticSurface(cellId)));
+    await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
     await tester.pump();
     await tester.pump();
 
@@ -544,11 +523,11 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(LazyTextEditKeys.staticSurface(cellId)));
+    await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
     await tester.pump();
     await tester.pump();
 
-    final scrollbar = find.byKey(LazyTextEditKeys.scrollbar(cellId));
+    final scrollbar = find.byKey(LazyTextFieldKeys.scrollbar(cellId));
     expect(scrollbar, findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
 
@@ -827,12 +806,12 @@ void main() {
       ),
     );
 
-    final before = tester.getRect(find.byKey(LazyTextEditKeys.root(cellId)));
+    final before = tester.getRect(find.byKey(LazyTextFieldKeys.root(cellId)));
 
-    await tester.tap(find.byKey(LazyTextEditKeys.staticSurface(cellId)));
+    await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
     await tester.pump();
 
-    final after = tester.getRect(find.byKey(LazyTextEditKeys.root(cellId)));
+    final after = tester.getRect(find.byKey(LazyTextFieldKeys.root(cellId)));
 
     _expectRectClose(after, before);
   });
@@ -869,14 +848,14 @@ void main() {
     );
 
     final staticViewportRect = tester.getRect(
-      find.byKey(LazyTextEditKeys.textViewport(cellId)),
+      find.byKey(LazyTextFieldKeys.textViewport(cellId)),
     );
 
-    await tester.tap(find.byKey(LazyTextEditKeys.staticSurface(cellId)));
+    await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
     await tester.pump();
 
     final editViewportRect = tester.getRect(
-      find.byKey(LazyTextEditKeys.textViewport(cellId)),
+      find.byKey(LazyTextFieldKeys.textViewport(cellId)),
     );
 
     _expectRectClose(editViewportRect, staticViewportRect);
@@ -1061,14 +1040,14 @@ void main() {
     );
 
     final oneLineHeight = tester
-        .getSize(find.byKey(LazyTextEditKeys.root(cellId)))
+        .getSize(find.byKey(LazyTextFieldKeys.root(cellId)))
         .height;
 
     controller.text = 'one\ntwo\nthree';
     await tester.pump();
 
     final threeLineHeight = tester
-        .getSize(find.byKey(LazyTextEditKeys.root(cellId)))
+        .getSize(find.byKey(LazyTextFieldKeys.root(cellId)))
         .height;
 
     expect(threeLineHeight, greaterThan(oneLineHeight));
@@ -1111,14 +1090,14 @@ void main() {
     );
 
     final staticViewportRect = tester.getRect(
-      find.byKey(LazyTextEditKeys.textViewport(cellId)),
+      find.byKey(LazyTextFieldKeys.textViewport(cellId)),
     );
 
-    await tester.tap(find.byKey(LazyTextEditKeys.staticSurface(cellId)));
+    await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
     await tester.pump();
 
     final editViewportRect = tester.getRect(
-      find.byKey(LazyTextEditKeys.textViewport(cellId)),
+      find.byKey(LazyTextFieldKeys.textViewport(cellId)),
     );
 
     _expectRectClose(editViewportRect, staticViewportRect);
@@ -1984,7 +1963,7 @@ class _LazyCellHarnessState extends State<_LazyCellHarness> {
 
   @override
   Widget build(BuildContext context) {
-    return LazyTextEditField(
+    return LazyTextField(
       cellId: widget.cellId,
       text: widget.controller.text,
       controller: isEditing ? widget.controller : null,
@@ -2092,7 +2071,7 @@ TextPainter _layoutStaticPainter({
 
 Finder _findRenderEditableInside(String cellId) {
   return find.descendant(
-    of: find.byKey(LazyTextEditKeys.editorSurface(cellId)),
+    of: find.byKey(LazyTextFieldKeys.editorSurface(cellId)),
     matching: find.byElementPredicate((element) {
       return element.renderObject is RenderEditable;
     }),

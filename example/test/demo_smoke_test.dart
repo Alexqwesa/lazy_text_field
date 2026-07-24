@@ -15,10 +15,18 @@ void main() {
     expect(find.byType(LazyTextField), findsWidgets);
     expect(find.text('Edit full'), findsOneWidget);
     expect(find.text('Click'), findsOneWidget);
+    expect(find.byType(DropdownMenu<double>), findsOneWidget);
+    expect(find.byIcon(Icons.text_fields), findsOneWidget);
 
     await tester.tap(find.byType(LazyTextField).first);
     await tester.pump();
 
-    expect(find.byType(TextField), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(LazyTextField).first,
+        matching: find.byType(TextField),
+      ),
+      findsOneWidget,
+    );
   });
 }
