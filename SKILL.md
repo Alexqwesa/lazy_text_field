@@ -103,9 +103,13 @@ final height = LazyTextField.computeHeightForWidth(
 );
 ```
 
-Use `reservedLeadingWidth` and `reservedTrailingWidth` for prefix/suffix
-controls that consume horizontal text space. Use the same `TextStyle`,
-`padding`, text direction, scaler, and width that the rendered field will use.
+For height measurement, pass `reservedLeadingWidth` / `reservedTrailingWidth`
+equal to the rendered icon-slot widths (`prefixIconConstraints` /
+`suffixIconConstraints`, or `kMinInteractiveDimension` when constraints are
+null). The live widget already reserves those widths from decoration; do not
+also pass the same values as `LazyTextField.reservedTrailingWidth` or text
+space is counted twice. Use the same `TextStyle`, `padding`, text direction,
+scaler, and width that the rendered field will use.
 
 For context-aware measurement, pass `context:` to
 `LazyTextField.computeHeightForWidth` or use `LazyTextField.measure` when you

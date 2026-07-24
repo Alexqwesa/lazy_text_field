@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.1] - 2026-07-23
+## [1.0.1] - 2026-07-24
 
 ### Added
 
@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   edit-mode scrollbar.
 - `startEditSelection` for choosing beginning, end, clicked text position, or
   full-text selection when editing starts.
+
+### Removed
+
+- `LazyTextField.onCalendarPressed` and the built-in calendar trailing button.
+  Use `LazyInputDecoration.suffixIcon` instead.
+
+### Changed
+
+- Clarified that `reservedTrailingWidth` is for extra non-decoration chrome;
+  prefix/suffix icons should use `LazyInputDecoration` icon slots.
+
 
 ## [1.0.0] - 2026-07-23
 

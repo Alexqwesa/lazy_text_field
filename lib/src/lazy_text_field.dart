@@ -141,6 +141,13 @@ class LazyTextField extends StatefulWidget {
   final double scrollbarThickness;
   final AlignmentGeometry scrollbarAlignment;
   final bool readOnlyAsLink;
+
+  /// Extra trailing width reserved from the text layout.
+  ///
+  /// Use this for chrome that is not a [LazyInputDecoration.suffixIcon]
+  /// (for example an app-owned trailing control). Prefer
+  /// [LazyInputDecoration.suffixIcon] / [LazyInputDecoration.suffixIconConstraints]
+  /// for field icons so the widget and height metrics stay aligned.
   final double reservedTrailingWidth;
   final bool readOnlyOverflowExpanded;
   final VoidCallback? onReadOnlyOverflowToggle;
@@ -556,10 +563,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
           ],
         );
 
-        final content = Padding(
-          padding: layoutPadding,
-          child: textRow,
-        );
+        final content = Padding(padding: layoutPadding, child: textRow);
 
         final frameKey = widget.isEditing
             ? LazyTextFieldKeys.editorSurface(widget.cellId)

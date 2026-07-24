@@ -63,7 +63,7 @@ Run these after edits:
 
 ```sh
 flutter analyze
-flutter test
+flutter test --coverage
 ```
 
 For example changes:

@@ -1161,7 +1161,10 @@ void main() {
         find.byKey(LazyTextFieldKeys.textViewport(cellId)),
       );
 
+      expect(find.byKey(LazyTextFieldKeys.prefixIcon(cellId)), findsOneWidget);
+      expect(find.byKey(LazyTextFieldKeys.suffixIcon(cellId)), findsOneWidget);
       expect(find.byIcon(Icons.search), findsNothing);
+      expect(find.byIcon(Icons.clear), findsNothing);
       expect(staticViewportRect.width, cellWidth - padding.horizontal - 44);
 
       await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
@@ -1176,6 +1179,245 @@ void main() {
       _expectRectClose(editViewportRect, staticViewportRect);
     },
   );
+
+  testWidgets('always-visible icons paint in static mode', (tester) async {
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: cellWidth,
+          child: LazyTextField(
+            cellId: cellId,
+            text: 'notes',
+            isEditing: false,
+            style: textStyle,
+            padding: padding,
+            decoration: const LazyInputDecoration(
+              prefixIcon: Icon(Icons.search, size: 12),
+              prefixIconConstraints: BoxConstraints(minWidth: 24),
+              suffixIcon: Icon(Icons.clear, size: 12),
+              suffixIconConstraints: BoxConstraints(minWidth: 20),
+            ),
+            decorationVisibility: LazyInputDecorationVisibility.always,
+            onStartEditing: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(LazyTextFieldKeys.prefixIcon(cellId)), findsOneWidget);
+    expect(find.byKey(LazyTextFieldKeys.suffixIcon(cellId)), findsOneWidget);
+    expect(find.byIcon(Icons.search), findsOneWidget);
+    expect(find.byIcon(Icons.clear), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(LazyTextFieldKeys.textViewport(cellId))).width,
+      cellWidth - padding.horizontal - 44,
+    );
+  });
+
+  testWidgets('never-visible decoration skips icon slots', (tester) async {
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: cellWidth,
+          child: LazyTextField(
+            cellId: cellId,
+            text: 'notes',
+            isEditing: false,
+            style: textStyle,
+            padding: padding,
+            decoration: const LazyInputDecoration(
+              prefixIcon: Icon(Icons.search, size: 12),
+              prefixIconConstraints: BoxConstraints(minWidth: 24),
+              suffixIcon: Icon(Icons.clear, size: 12),
+              suffixIconConstraints: BoxConstraints(minWidth: 20),
+            ),
+            decorationVisibility: LazyInputDecorationVisibility.never,
+            onStartEditing: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(LazyTextFieldKeys.prefixIcon(cellId)), findsNothing);
+    expect(find.byKey(LazyTextFieldKeys.suffixIcon(cellId)), findsNothing);
+    expect(find.byIcon(Icons.search), findsNothing);
+    expect(find.byIcon(Icons.clear), findsNothing);
+    expect(
+      tester.getSize(find.byKey(LazyTextFieldKeys.textViewport(cellId))).width,
+      cellWidth - padding.horizontal,
+    );
+  });
+
+  testWidgets('prefix-only and suffix-only reserve their own widths', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _TestApp(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: cellWidth,
+              child: LazyTextField(
+                cellId: 'prefix-only',
+                text: 'a',
+                isEditing: false,
+                style: textStyle,
+                padding: padding,
+                decoration: const LazyInputDecoration(
+                  prefixIcon: Icon(Icons.search, size: 12),
+                  prefixIconConstraints: BoxConstraints(minWidth: 24),
+                ),
+                decorationVisibility: LazyInputDecorationVisibility.always,
+                onStartEditing: () {},
+              ),
+            ),
+            SizedBox(
+              width: cellWidth,
+              child: LazyTextField(
+                cellId: 'suffix-only',
+                text: 'a',
+                isEditing: false,
+                style: textStyle,
+                padding: padding,
+                decoration: const LazyInputDecoration(
+                  suffixIcon: Icon(Icons.clear, size: 12),
+                  suffixIconConstraints: BoxConstraints(minWidth: 20),
+                ),
+                decorationVisibility: LazyInputDecorationVisibility.always,
+                onStartEditing: () {},
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    expect(
+      tester
+          .getSize(find.byKey(LazyTextFieldKeys.textViewport('prefix-only')))
+          .width,
+      cellWidth - padding.horizontal - 24,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(LazyTextFieldKeys.textViewport('suffix-only')))
+          .width,
+      cellWidth - padding.horizontal - 20,
+    );
+    expect(
+      find.byKey(LazyTextFieldKeys.suffixIcon('prefix-only')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(LazyTextFieldKeys.prefixIcon('suffix-only')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('null icon constraints use kMinInteractiveDimension', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: 200,
+          child: LazyTextField(
+            cellId: cellId,
+            text: 'a',
+            isEditing: false,
+            style: textStyle,
+            padding: padding,
+            decoration: const LazyInputDecoration(
+              prefixIcon: Icon(Icons.search, size: 12),
+              suffixIcon: Icon(Icons.clear, size: 12),
+            ),
+            decorationVisibility: LazyInputDecorationVisibility.always,
+            onStartEditing: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.getSize(find.byKey(LazyTextFieldKeys.textViewport(cellId))).width,
+      200 - padding.horizontal - (kMinInteractiveDimension * 2),
+    );
+  });
+
+  testWidgets('suffix IconButton tap invokes callback while editing', (
+    tester,
+  ) async {
+    var pressed = 0;
+    final controller = TextEditingController(text: '2026-07-24');
+    final focusNode = FocusNode();
+
+    addTearDown(controller.dispose);
+    addTearDown(focusNode.dispose);
+
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: cellWidth,
+          child: LazyTextField(
+            cellId: cellId,
+            text: controller.text,
+            isEditing: true,
+            controller: controller,
+            focusNode: focusNode,
+            style: textStyle,
+            padding: padding,
+            decoration: LazyInputDecoration(
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.calendar_today, size: 16),
+                onPressed: () => pressed += 1,
+                padding: EdgeInsets.zero,
+              ),
+              suffixIconConstraints: const BoxConstraints(minWidth: 48),
+            ),
+            decorationVisibility: LazyInputDecorationVisibility.editing,
+            onStartEditing: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(LazyTextFieldKeys.suffixIcon(cellId)), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.calendar_today));
+    await tester.pump();
+    expect(pressed, 1);
+  });
+
+  testWidgets('reservedTrailingWidth stacks with suffix icon reservation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: 200,
+          child: LazyTextField(
+            cellId: cellId,
+            text: 'a',
+            isEditing: false,
+            style: textStyle,
+            padding: padding,
+            reservedTrailingWidth: 12,
+            decoration: const LazyInputDecoration(
+              suffixIcon: Icon(Icons.clear, size: 12),
+              suffixIconConstraints: BoxConstraints(minWidth: 20),
+            ),
+            decorationVisibility: LazyInputDecorationVisibility.always,
+            onStartEditing: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.getSize(find.byKey(LazyTextFieldKeys.textViewport(cellId))).width,
+      200 - padding.horizontal - 20 - 12,
+    );
+  });
 
   testWidgets('always visible decoration shows hint in static mode', (
     tester,
