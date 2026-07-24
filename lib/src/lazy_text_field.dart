@@ -84,7 +84,6 @@ class LazyTextField extends StatefulWidget {
     this.overflowMarkerColor,
     this.expandedOverflowMarkerColor,
     this.overflowMarkerBuilder = LazyTextField.defaultOverflowMarkerBuilder,
-    this.onCalendarPressed,
     this.onChanged,
     this.onSubmitted,
     this.onEditingComplete,
@@ -149,7 +148,6 @@ class LazyTextField extends StatefulWidget {
   final Color? overflowMarkerColor;
   final Color? expandedOverflowMarkerColor;
   final LazyTextFieldOverflowMarkerBuilder? overflowMarkerBuilder;
-  final VoidCallback? onCalendarPressed;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final VoidCallback? onEditingComplete;
@@ -560,22 +558,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
 
         final content = Padding(
           padding: layoutPadding,
-          child: widget.onCalendarPressed != null
-              ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    textRow,
-                    SizedBox(
-                      width: widget.reservedTrailingWidth,
-                      child: IconButton(
-                        icon: const Icon(Icons.calendar_today, size: 20),
-                        onPressed: widget.onCalendarPressed,
-                        padding: EdgeInsets.zero,
-                      ),
-                    ),
-                  ],
-                )
-              : textRow,
+          child: textRow,
         );
 
         final frameKey = widget.isEditing
