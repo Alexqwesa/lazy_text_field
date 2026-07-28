@@ -55,7 +55,7 @@ jobs:
 
       - name: Build web demo
         working-directory: example
-        run: flutter build web --release --base-href /lazy_text_field/
+        run: flutter build web --release -t lib/main_live_demo.dart --base-href /lazy_text_field/
 
       - uses: actions/upload-pages-artifact@v4
         with:

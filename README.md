@@ -11,13 +11,28 @@ connects a real `TextField` only while editing. It also exposes fast
 constrained-width height calculation through `LazyTextFieldLayout`,
 `LazyTextFieldMetrics`, and `LazyTextField.computeHeightForWidth`.
 
+## Live demo
+
+Explore the full table demo in the browser:
+
+[Open the live demo](https://alexqwesa.github.io/lazy_text_field/)
+
+The live demo covers edit-only and always-visible decoration, constrained
+wrapping, bounded height with scrollbar gutter, prefix/suffix icons, overflow
+markers, and lazy controller allocation in a multi-column table.
+
+Even on the full page, only one real `TextField` / `EditableText` is mounted at
+a time. Every other cell stays on the lightweight read-only path until it is
+activated.
+
+
 ## Installation
 
 Add `lazy_text_field` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  lazy_text_field: ^1.0.0
+  lazy_text_field: 
 ```
 
 Then import the public barrel:
@@ -32,7 +47,7 @@ import 'package:lazy_text_field/lazy_text_field.dart';
 | --- | --- | --- |
 | Controllers / focus nodes | One per visible cell | Created only for the active editor |
 | Read-only rendering | Still pays `InputDecorator` layout cost | Lightweight `Text` / painter path |
-| Static → edit switch | Often shifts line wraps or height | Keeps the same text layout boxes |
+| Static to edit switch | Often shifts line wraps or height | Keeps the same text layout boxes |
 | Row height in tables | Hard to match edit height exactly | `computeHeightForWidth` uses the same engine as the widget |
 | Decoration in grids | `InputDecoration` affects intrinsic height | `LazyInputDecoration` is height-neutral chrome |
 
@@ -71,15 +86,6 @@ That is all correct for the active editor. It is unnecessary for thousands of
 read-only cells. `LazyTextField` keeps the table cheap by rendering static cells
 with a lightweight text path, then mounting the real `TextField` only for the
 cell currently being edited.
-
-## Live demo
-
-Explore the example app in the browser:
-
-[Open the live demo](https://alexqwesa.github.io/lazy_text_field/)
-
-The demo covers decoration modes, height modes, prefix icons, overflow markers,
-and lazy controller allocation in a multi-column table.
 
 ## Choose a widget
 
@@ -181,29 +187,6 @@ For bounded editing, `scrollbarGutter` reserves text width for the package
 scrollbar. Use `scrollbarThickness` and `scrollbarAlignment` to control the
 thumb size and where it sits inside that reserved gutter.
 
-## API documentation
-
-Full API reference is published to [pub.dev/documentation](https://pub.dev/documentation/lazy_text_field/latest/)
-after release.
-
-To generate docs locally:
-
-```sh
-dart doc
-open doc/api/index.html
-```
-
-## Example app
-
-```sh
-cd example
-flutter run -d chrome
-```
-
-The example covers edit-only and always-visible decoration, constrained
-wrapping, bounded height with scrollbar gutter, prefix/suffix icons, and lazy
-controller allocation in large lists.
-
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).

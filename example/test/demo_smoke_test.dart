@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lazy_text_field/lazy_text_field.dart';
-import 'package:lazy_text_field_example/main.dart';
+import 'package:lazy_text_field_example/main_live_demo.dart';
 
 void main() {
   testWidgets('demo renders table and enters edit mode', (tester) async {
