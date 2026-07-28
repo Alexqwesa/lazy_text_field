@@ -4,6 +4,9 @@ skills/
 # Local publish helpers.
 tool/
 
+# Generated local outputs.
+build/
+coverage/
+
 # Generated locally; pub.dev builds API docs after release.
 doc/api/
-

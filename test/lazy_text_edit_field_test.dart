@@ -255,6 +255,65 @@ void main() {
     expect(editRootRect.height, greaterThan(40));
   });
 
+  testWidgets('tap outside can stop editing through harness callback', (
+    tester,
+  ) async {
+    final controller = TextEditingController(text: 'editable text');
+    final focusNode = FocusNode();
+
+    addTearDown(controller.dispose);
+    addTearDown(focusNode.dispose);
+
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: 240,
+          height: 120,
+          child: Stack(
+            children: [
+              SizedBox(
+                width: cellWidth,
+                child: _LazyCellHarness(
+                  cellId: cellId,
+                  controller: controller,
+                  focusNode: focusNode,
+                  text: controller.text,
+                  style: textStyle,
+                  padding: padding,
+                  maxHeight: null,
+                  scrollbarGutter: scrollbarGutter,
+                  stopEditingOnTapOutside: true,
+                ),
+              ),
+              Positioned(
+                left: 180,
+                top: 60,
+                child: GestureDetector(
+                  key: const Key('outside-tap-target'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {},
+                  child: const SizedBox(width: 40, height: 40),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(EditableText), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('outside-tap-target')));
+    await tester.pump();
+
+    expect(find.byType(EditableText), findsNothing);
+    expect(find.byKey(LazyTextFieldKeys.staticSurface(cellId)), findsOneWidget);
+  });
+
   testWidgets('edit mode builds TextField with null TextField decoration', (
     tester,
   ) async {
