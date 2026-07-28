@@ -25,6 +25,12 @@ Even on the full page, only one real `TextField` / `EditableText` is mounted at
 a time. Every other cell stays on the lightweight read-only path until it is
 activated.
 
+Run the same demo locally with:
+
+```sh
+cd example
+flutter run -d chrome -t lib/main_live_demo.dart
+```
 
 ## Installation
 
@@ -32,7 +38,7 @@ Add `lazy_text_field` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  lazy_text_field: 
+  lazy_text_field: ^1.0.3
 ```
 
 Then import the public barrel:

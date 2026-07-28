@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 /// Canonical row-height engine shared by [LazyTextField] and
 /// [LazyTextFieldMetrics].
 class LazyTextFieldLayout {
+  /// Creates a computed layout result.
   const LazyTextFieldLayout({
     required this.height,
     required this.contentHeight,
@@ -14,13 +15,25 @@ class LazyTextFieldLayout {
     required this.reservedScrollbarWidth,
   });
 
+  /// Final outer surface height for the field.
   final double height;
+
+  /// Height available to the measured text content.
   final double contentHeight;
+
+  /// Width available to the visible text viewport.
   final double textViewportWidth;
+
+  /// Width passed to [TextPainter] for static/edit text layout.
   final double textLayoutWidth;
+
+  /// Whether the natural text height exceeds the bounded [height].
   final bool hasVerticalOverflow;
+
+  /// Width reserved for the package scrollbar gutter.
   final double reservedScrollbarWidth;
 
+  /// Returns text adjusted so empty strings and trailing newlines measure.
   static String measureText(String text) {
     if (text.isEmpty) {
       return '\u200B';
@@ -31,6 +44,7 @@ class LazyTextFieldLayout {
     return text;
   }
 
+  /// Measures painted text height with the same defaults as [LazyTextField].
   static double paintedTextHeight({
     required String text,
     required TextStyle style,
@@ -52,6 +66,7 @@ class LazyTextFieldLayout {
     return painter.height;
   }
 
+  /// Computes lazy text field layout from explicit measurement inputs.
   static LazyTextFieldLayout compute({
     required String text,
     required double width,
@@ -141,6 +156,7 @@ class LazyTextFieldLayout {
     );
   }
 
+  /// Computes lazy text field layout using inherited values from [context].
   static LazyTextFieldLayout computeFromContext(
     BuildContext context, {
     required String text,

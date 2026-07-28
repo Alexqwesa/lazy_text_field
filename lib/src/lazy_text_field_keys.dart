@@ -1,32 +1,40 @@
 import 'package:flutter/material.dart';
 
+/// Stable keys used by lazy text fields for tests and integrations.
 final class LazyTextFieldKeys {
   const LazyTextFieldKeys._();
 
+  /// Key for the root field surface.
   static Key root(String cellId) {
     return ValueKey('lazy-text-field.root.$cellId');
   }
 
+  /// Key for the read-only tappable surface.
   static Key staticSurface(String cellId) {
     return ValueKey('lazy-text-field.static.$cellId');
   }
 
+  /// Key for the editing surface containing the real [TextField].
   static Key editorSurface(String cellId) {
     return ValueKey('lazy-text-field.editor.$cellId');
   }
 
+  /// Key for the measured text viewport.
   static Key textViewport(String cellId) {
     return ValueKey('lazy-text-field.text-viewport.$cellId');
   }
 
+  /// Key for the package scrollbar painted in bounded edit mode.
   static Key scrollbar(String cellId) {
     return ValueKey('lazy-text-field.scrollbar.$cellId');
   }
 
+  /// Key for the reserved prefix icon slot.
   static Key prefixIcon(String cellId) {
     return ValueKey('lazy-text-field.prefix-icon.$cellId');
   }
 
+  /// Key for the reserved suffix icon slot.
   static Key suffixIcon(String cellId) {
     return ValueKey('lazy-text-field.suffix-icon.$cellId');
   }

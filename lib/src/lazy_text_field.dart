@@ -14,25 +14,39 @@ typedef LazyTextFieldOverflowMarkerBuilder =
       LazyTextFieldOverflowMarkerDetails details,
     );
 
+/// Selection applied when a lazy field enters edit mode.
 enum LazyTextFieldStartEditSelection {
+  /// Place the caret at the beginning of the text.
   beginning,
+
+  /// Place the caret at the end of the text.
   end,
+
+  /// Place the caret closest to the tap position that started editing.
   tapPosition,
+
+  /// Select the full text value.
   fullSelection,
 }
 
+/// Details for a pointer-driven edit start.
 class LazyTextFieldStartEditDetails {
+  /// Creates edit-start details.
   const LazyTextFieldStartEditDetails({
     required this.localPosition,
     required this.textOffset,
   });
 
+  /// Local tap position inside the text viewport.
   final Offset localPosition;
+
+  /// Text offset nearest to [localPosition].
   final int textOffset;
 }
 
 /// State passed to [LazyTextFieldOverflowMarkerBuilder].
 class LazyTextFieldOverflowMarkerDetails {
+  /// Creates overflow marker builder details.
   const LazyTextFieldOverflowMarkerDetails({
     required this.size,
     required this.color,
@@ -41,10 +55,19 @@ class LazyTextFieldOverflowMarkerDetails {
     required this.onToggle,
   });
 
+  /// Suggested square marker size.
   final double size;
+
+  /// Marker color selected for the current state.
   final Color color;
+
+  /// Whether read-only overflow is currently expanded.
   final bool expanded;
+
+  /// Whether text is hidden by the current read-only height.
   final bool hasHiddenText;
+
+  /// Callback that toggles read-only overflow expansion, if available.
   final VoidCallback? onToggle;
 }
 
@@ -54,6 +77,11 @@ class LazyTextFieldOverflowMarkerDetails {
 /// Pass `controller` and `focusNode` when [isEditing] is true; pass `null` for
 /// both otherwise so read-only cells avoid edit allocations.
 class LazyTextField extends StatefulWidget {
+  /// Creates a lazy text field.
+  ///
+  /// When [isEditing] is true, both [controller] and [focusNode] must be
+  /// non-null. When [isEditing] is false, pass null for both to avoid mounting
+  /// edit resources.
   const LazyTextField({
     required this.cellId,
     required this.text,
@@ -119,27 +147,73 @@ class LazyTextField extends StatefulWidget {
   }) : assert(!isEditing || controller != null),
        assert(!isEditing || focusNode != null);
 
+  /// Stable id used for keys and test hooks.
   final String cellId;
+
+  /// Text shown in read-only mode and used for measurement.
   final String text;
+
+  /// Whether the field is currently mounting the real editor.
   final bool isEditing;
+
+  /// Active edit controller, required only while [isEditing] is true.
   final TextEditingController? controller;
+
+  /// Active edit focus node, required only while [isEditing] is true.
   final FocusNode? focusNode;
+
+  /// Called when the read-only surface should enter edit mode.
   final VoidCallback onStartEditing;
+
+  /// Called with tap-derived text position details when editing starts.
   final ValueChanged<LazyTextFieldStartEditDetails>? onStartEditingWithDetails;
+
+  /// Called when editing should stop without a submitted value.
+  ///
+  /// This callback is currently used by internal surfaces that need to ask the
+  /// parent to leave edit mode.
   final VoidCallback? onStopEditing;
+
+  /// Whether the field should lay out as one ellipsized line.
   final bool singleLine;
+
+  /// Text style used in both read-only and edit modes.
   final TextStyle? style;
+
+  /// Strut style used for edit-mode and measurement text layout.
   final StrutStyle? strutStyle;
+
+  /// Horizontal text alignment.
   final TextAlign textAlign;
+
+  /// Explicit text direction, or null to inherit it.
   final TextDirection? textDirection;
+
+  /// Content padding used by both read-only and edit modes.
   final EdgeInsetsGeometry padding;
+
+  /// Height-neutral decoration chrome around the field.
   final LazyInputDecoration? decoration;
+
+  /// Controls when [decoration] is painted.
   final LazyInputDecorationVisibility decorationVisibility;
+
+  /// Minimum surface height.
   final double minHeight;
+
+  /// Maximum surface height before vertical overflow is clipped.
   final double? maxHeight;
+
+  /// Width reserved for the package scrollbar in bounded edit mode.
   final double scrollbarGutter;
+
+  /// Thickness of the package scrollbar thumb.
   final double scrollbarThickness;
+
+  /// Alignment of the package scrollbar thumb inside its gutter.
   final AlignmentGeometry scrollbarAlignment;
+
+  /// Whether read-only text should use link-like cursor/gesture behavior.
   final bool readOnlyAsLink;
 
   /// Extra trailing width reserved from the text layout.
@@ -149,49 +223,125 @@ class LazyTextField extends StatefulWidget {
   /// [LazyInputDecoration.suffixIcon] / [LazyInputDecoration.suffixIconConstraints]
   /// for field icons so the widget and height metrics stay aligned.
   final double reservedTrailingWidth;
+
+  /// Whether read-only overflow is currently expanded.
   final bool readOnlyOverflowExpanded;
+
+  /// Called when the read-only overflow marker is tapped.
   final VoidCallback? onReadOnlyOverflowToggle;
+
+  /// Square size used for the read-only overflow marker.
   final double overflowMarkerSize;
+
+  /// Marker color while overflow is collapsed.
   final Color? overflowMarkerColor;
+
+  /// Marker color while overflow is expanded.
   final Color? expandedOverflowMarkerColor;
+
+  /// Builder for the read-only overflow marker, or null to hide it.
   final LazyTextFieldOverflowMarkerBuilder? overflowMarkerBuilder;
+
+  /// Passed through to the internal [TextField.onChanged].
   final ValueChanged<String>? onChanged;
+
+  /// Passed through to the internal [TextField.onSubmitted].
   final ValueChanged<String>? onSubmitted;
+
+  /// Passed through to the internal [TextField.onEditingComplete].
   final VoidCallback? onEditingComplete;
+
+  /// Passed through to the internal [TextField.onTapOutside].
   final TapRegionCallback? onTapOutside;
+
+  /// Called when secondary tap starts on the read-only surface.
   final ValueChanged<TapDownDetails>? onSecondaryTapDown;
+
+  /// Called when long press starts on the read-only surface.
   final ValueChanged<LongPressStartDetails>? onLongPressStart;
+
+  /// Passed through to the internal [TextField.textInputAction].
   final TextInputAction? textInputAction;
+
+  /// Passed through to the internal [TextField.keyboardType].
   final TextInputType? keyboardType;
+
+  /// Passed through to the internal [TextField.inputFormatters].
   final List<TextInputFormatter>? inputFormatters;
+
+  /// Passed through to the internal [TextField.minLines].
   final int? minLines;
+
+  /// Passed through to the internal [TextField.maxLines].
   final int? maxLines;
+
+  /// Passed through to the internal [TextField.expands].
   final bool? expands;
+
+  /// Scroll controller for the internal editor.
   final ScrollController? scrollController;
+
+  /// Scroll physics for the internal editor.
   final ScrollPhysics? scrollPhysics;
+
+  /// Passed through to the internal [TextField.enabled].
   final bool? enabled;
+
+  /// Passed through to the internal [TextField.readOnly].
   final bool readOnly;
+
+  /// Passed through to the internal [TextField.autofocus].
   final bool autofocus;
+
+  /// Passed through to the internal [TextField.showCursor].
   final bool? showCursor;
+
+  /// Passed through to the internal [TextField.enableInteractiveSelection].
   final bool? enableInteractiveSelection;
+
+  /// Passed through to the internal [TextField.selectionControls].
   final TextSelectionControls? selectionControls;
+
+  /// Passed through to the internal [TextField.cursorColor].
   final Color? cursorColor;
+
+  /// Passed through to the internal [TextField.cursorWidth].
   final double cursorWidth;
+
+  /// Passed through to the internal [TextField.cursorHeight].
   final double? cursorHeight;
+
+  /// Passed through to the internal [TextField.cursorRadius].
   final Radius? cursorRadius;
+
+  /// Passed through to the internal [TextField.maxLength].
   final int? maxLength;
+
+  /// Passed through to the internal [TextField.maxLengthEnforcement].
   final MaxLengthEnforcement? maxLengthEnforcement;
+
+  /// Passed through to the internal [TextField.undoController].
   final UndoHistoryController? undoController;
+
+  /// Passed through to the internal [TextField.statesController].
   final WidgetStatesController? statesController;
+
+  /// Passed through to the internal [TextField.autofillHints].
   final Iterable<String>? autofillHints;
+
+  /// Passed through to the internal [TextField.contextMenuBuilder].
   final EditableTextContextMenuBuilder? contextMenuBuilder;
+
+  /// Passed through to the internal [TextField.mouseCursor].
   final MouseCursor? mouseCursor;
 
+  /// Default alignment for the package scrollbar inside its gutter.
   static const Alignment defaultScrollbarAlignment = Alignment(
     -0.3333333333333333,
     0,
   );
 
+  /// Measures a full lazy text field layout using inherited context values.
   static LazyTextFieldLayout measure(
     BuildContext context, {
     required String text,

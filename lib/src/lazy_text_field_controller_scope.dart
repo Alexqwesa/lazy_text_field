@@ -4,15 +4,22 @@ import 'package:lazy_text_field/src/lazy_text_field_edit_controller.dart';
 /// Provides a shared [LazyTextFieldEditController] to [ScopedLazyTextField]
 /// descendants.
 class LazyTextFieldControllerScope extends StatefulWidget {
+  /// Creates a controller scope for lazy text fields.
+  ///
+  /// When [controller] is omitted, the scope owns and disposes one.
   const LazyTextFieldControllerScope({
     required this.child,
     super.key,
     this.controller,
   });
 
+  /// External controller to expose, or null to let the scope own one.
   final LazyTextFieldEditController? controller;
+
+  /// Subtree that can read the shared controller.
   final Widget child;
 
+  /// Returns the nearest controller and asserts when no scope exists.
   static LazyTextFieldEditController of(BuildContext context) {
     final controller = maybeOf(context);
     assert(
@@ -22,6 +29,7 @@ class LazyTextFieldControllerScope extends StatefulWidget {
     return controller!;
   }
 
+  /// Returns the nearest controller, or null when no scope exists.
   static LazyTextFieldEditController? maybeOf(BuildContext context) {
     return context
         .dependOnInheritedWidgetOfExactType<_LazyTextFieldControllerInherited>()

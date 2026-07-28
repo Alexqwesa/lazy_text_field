@@ -9,16 +9,30 @@ class LazyTextFieldEditController extends ChangeNotifier {
       <String, TextEditingController>{};
   final Map<String, FocusNode> _focusNodes = <String, FocusNode>{};
 
+  /// Active text controllers keyed by cell id.
   Map<String, TextEditingController> get controllers =>
       Map.unmodifiable(_controllers);
+
+  /// Active focus nodes keyed by cell id.
   Map<String, FocusNode> get focusNodes => Map.unmodifiable(_focusNodes);
+
+  /// Cell ids that are currently editing.
   Iterable<String> get activeIds => _controllers.keys;
 
+  /// Whether [cellId] currently has both a controller and focus node.
   bool isEditing(String cellId) =>
       _controllers.containsKey(cellId) && _focusNodes.containsKey(cellId);
+
+  /// Returns the active text controller for [cellId], if it is editing.
   TextEditingController? controllerFor(String cellId) => _controllers[cellId];
+
+  /// Returns the active focus node for [cellId], if it is editing.
   FocusNode? focusNodeFor(String cellId) => _focusNodes[cellId];
 
+  /// Starts editing [cellId] and returns its active controller.
+  ///
+  /// Unless [allowMultipleActiveEdits] is true, other active cells are stopped
+  /// before this one starts editing.
   TextEditingController startEditing({
     required String cellId,
     required String initialValue,
@@ -60,6 +74,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     return controller;
   }
 
+  /// Updates the active controller text for [cellId] without starting editing.
   void updateText(String cellId, String value) {
     final controller = _controllers[cellId];
     if (controller == null) return;
@@ -68,6 +83,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     }
   }
 
+  /// Stops editing [cellId] and disposes its edit resources.
   void stopEditing(String cellId) {
     final controller = _controllers.remove(cellId);
     final focusNode = _focusNodes.remove(cellId);
@@ -78,6 +94,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     }
   }
 
+  /// Stops every active edit whose id matches [shouldStop].
   void stopWhere(bool Function(String cellId) shouldStop) {
     for (final cellId in _controllers.keys.toList(growable: false)) {
       if (shouldStop(cellId)) {
@@ -86,6 +103,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     }
   }
 
+  /// Stops all active edits.
   void stopAll() {
     stopWhere((_) => true);
   }

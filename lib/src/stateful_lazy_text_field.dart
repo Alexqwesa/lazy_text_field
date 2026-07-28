@@ -6,10 +6,14 @@ import 'package:lazy_text_field/src/lazy_input_decoration.dart';
 import 'package:lazy_text_field/src/lazy_text_field.dart';
 import 'package:lazy_text_field/src/lazy_text_field_metrics.dart';
 
+/// Saves an edited lazy text field value.
+///
+/// Return true to accept the value and exit edit mode, or false to keep editing.
 typedef LazyTextFieldSave = FutureOr<bool> Function(String value);
 
 /// Self-contained [LazyTextField] wrapper that owns its edit lifecycle.
 class StatefulLazyTextField extends StatefulWidget {
+  /// Creates a lazy text field that owns its controller and focus node.
   const StatefulLazyTextField({
     required this.cellId,
     required this.text,
@@ -32,23 +36,58 @@ class StatefulLazyTextField extends StatefulWidget {
     this.onSaved,
   });
 
+  /// Stable id used for keys and edit tracking.
   final String cellId;
+
+  /// Current read-only text value.
   final String text;
+
+  /// Called when editing should save.
   final LazyTextFieldSave onSave;
+
+  /// Whether the field should lay out as one ellipsized line.
   final bool singleLine;
+
+  /// Text style used in both read-only and edit modes.
   final TextStyle? style;
+
+  /// Content padding used for both read-only and edit modes.
   final EdgeInsetsGeometry padding;
+
+  /// Height-neutral decoration chrome around the field.
   final LazyInputDecoration? decoration;
+
+  /// Controls when [decoration] is painted.
   final LazyInputDecorationVisibility decorationVisibility;
+
+  /// Minimum surface height.
   final double minHeight;
+
+  /// Maximum surface height before vertical overflow is clipped.
   final double? maxHeight;
+
+  /// Width reserved for the package scrollbar in bounded edit mode.
   final double scrollbarGutter;
+
+  /// Thickness of the package scrollbar thumb.
   final double scrollbarThickness;
+
+  /// Alignment of the package scrollbar thumb inside its gutter.
   final AlignmentGeometry scrollbarAlignment;
+
+  /// Selection policy applied when editing starts.
   final LazyTextFieldStartEditSelection startEditSelection;
+
+  /// Whether read-only text should use link-like cursor/gesture behavior.
   final bool readOnlyAsLink;
+
+  /// Optional guard called before edit resources are created.
   final FutureOr<bool> Function()? onWillStartEditing;
+
+  /// Called when editing is canceled with Escape.
   final VoidCallback? onCancel;
+
+  /// Called after [onSave] accepts a value.
   final ValueChanged<String>? onSaved;
 
   @override
