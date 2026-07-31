@@ -3,10 +3,10 @@
 /// Read-only cells render without allocating [TextEditingController],
 /// [FocusNode], or [ScrollController]. Edit resources are created only while a
 /// cell is active. Use [LazyTextField.computeHeightForWidth] or
-/// [LazyTextFieldMetrics.computeHeightForWidth] to compute exact row heights.
+/// [LazyTextFieldMetrics.computeHeightForWidth] to compute exact undecorated
+/// text-viewport heights.
 library;
 
-export 'src/lazy_input_decoration.dart';
 export 'src/lazy_text_field.dart';
 export 'src/lazy_text_field_controller_scope.dart';
 export 'src/lazy_text_field_edit_controller.dart';

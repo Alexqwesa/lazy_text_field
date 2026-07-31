@@ -29,16 +29,6 @@ final class LazyTextFieldKeys {
     return ValueKey('lazy-text-field.scrollbar.$cellId');
   }
 
-  /// Key for the reserved prefix icon slot.
-  static Key prefixIcon(String cellId) {
-    return ValueKey('lazy-text-field.prefix-icon.$cellId');
-  }
-
-  /// Key for the reserved suffix icon slot.
-  static Key suffixIcon(String cellId) {
-    return ValueKey('lazy-text-field.suffix-icon.$cellId');
-  }
-
   /// Legacy key kept for existing integration tests.
   static Key legacyReadOnlySurface(String cellId) {
     return ValueKey('read-only-surface-$cellId');

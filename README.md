@@ -4,28 +4,26 @@
 [![pub package](https://img.shields.io/pub/v/lazy_text_field.svg)](https://pub.dev/packages/lazy_text_field)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Pure Flutter lazy text-field primitives for table and grid cells.
+Lazy Material text fields for large Flutter tables and grids.
 
-`LazyTextField` renders read-only text without allocating edit resources, then
-connects a real `TextField` only while editing. It also exposes fast
-constrained-width height calculation through `LazyTextFieldLayout`,
-`LazyTextFieldMetrics`, and `LazyTextField.computeHeightForWidth`.
+`LazyTextField` keeps a native `InputDecorator` visible in read-only mode, but
+does not allocate a `TextField`, `EditableText`, controller, focus node, or
+editing infrastructure until the cell is activated. The same decorator remains
+mounted while its lightweight text child is replaced by the real editor.
+
+For supported decorations, the switch preserves the field bounds, text
+viewport, baseline, wrapping, and glyph position. Flutter's normal focus,
+floating-label, color, and border transitions remain animated.
 
 ## Live demo
 
-Explore the full table demo in the browser:
-
 [Open the live demo](https://alexqwesa.github.io/lazy_text_field/)
 
-The live demo covers edit-only and always-visible decoration, constrained
-wrapping, bounded height with scrollbar gutter, prefix/suffix icons, overflow
-markers, and lazy controller allocation in a multi-column table.
+The demo covers native decoration, constrained wrapping, bounded editing,
+overflow markers, selection policies, and lazy controller allocation.
+The whole page mounts only one real `TextField` / `EditableText` at a time.
 
-Even on the full page, only one real `TextField` / `EditableText` is mounted at
-a time. Every other cell stays on the lightweight read-only path until it is
-activated.
-
-Run the same demo locally with:
+Run it locally:
 
 ```sh
 cd example
@@ -34,72 +32,32 @@ flutter run -d chrome -t lib/main_live_demo.dart
 
 ## Installation
 
-Add `lazy_text_field` to your `pubspec.yaml`:
-
 ```yaml
 dependencies:
-  lazy_text_field: ^1.0.3
+  lazy_text_field: ^2.0.0
 ```
-
-Then import the public barrel:
 
 ```dart
 import 'package:lazy_text_field/lazy_text_field.dart';
 ```
 
-## Why not just `TextField`?
+## Why use it?
 
 | | `TextField` in every cell | `LazyTextField` |
 | --- | --- | --- |
-| Controllers / focus nodes | One per visible cell | Created only for the active editor |
-| Read-only rendering | Still pays `InputDecorator` layout cost | Lightweight `Text` / painter path |
-| Static to edit switch | Often shifts line wraps or height | Keeps the same text layout boxes |
-| Row height in tables | Hard to match edit height exactly | `computeHeightForWidth` uses the same engine as the widget |
-| Decoration in grids | `InputDecoration` affects intrinsic height | `LazyInputDecoration` is height-neutral chrome |
-
-Use `LazyTextField` when you render hundreds or thousands of editable cells and
-need predictable memory use, stable row heights, and pixel-aligned transitions
-between read-only and edit modes.
-
-## The real cost is the mounted `TextField`
-
-For big tables and grids, the expensive part is not just text painting. The
-cost appears when every visible cell mounts a real `TextField`.
-
-A Flutter `TextField` builds an `EditableText`. `EditableTextState` participates
-in a lot of editing infrastructure, including:
-
-- `TextInputClient`
-- `AutofillClient`
-- `WidgetsBindingObserver`
-- `TickerProviderStateMixin`
-- `AutomaticKeepAliveClientMixin`
-- text-selection behavior
-- clipboard monitoring
-- spell-check behavior
-- cursor animation
-- scrolling
-- keyboard input connection
-- selection overlays and context menus
-
-During initialization, `EditableTextState` registers controller and focus
-listeners, clipboard listeners, lifecycle handling, spell-check configuration,
-and other editing infrastructure. `EditableText` also handles keyboard input
-through the platform text-input service, selection and cursor movement, keeping
-the caret visible, scrolling, input formatters, selection menus, and gestures.
-
-That is all correct for the active editor. It is unnecessary for thousands of
-read-only cells. `LazyTextField` keeps the table cheap by rendering static cells
-with a lightweight text path, then mounting the real `TextField` only for the
-cell currently being edited.
+| Controllers and focus nodes | One per mounted field | Created only for active editors |
+| Editing infrastructure | Mounted for every field | Mounted only while editing |
+| Material decoration | Native `InputDecoration` | The same native `InputDecoration` |
+| Static-to-edit switch | Separate overlays can reflow or misalign | One persistent decorator and stable text viewport |
+| Undecorated row metrics | Requires separate measurement | Exact text-viewport measurement helpers |
 
 ## Choose a widget
 
 | Widget | When to use |
 | --- | --- |
-| `LazyTextField` | You already own controller/focus state and pass them only while editing |
-| `StatefulLazyTextField` | One-off cell where the widget can own its edit lifecycle |
-| `LazyTextFieldControllerScope` + `ScopedLazyTextField` | Many cells sharing one edit manager |
+| `LazyTextField` | You own controller and focus state |
+| `StatefulLazyTextField` | The cell can own its edit lifecycle |
+| `LazyTextFieldControllerScope` + `ScopedLazyTextField` | Many cells share one edit manager |
 
 ## Usage
 
@@ -111,51 +69,110 @@ LazyTextField(
   controller: controller,
   focusNode: focusNode,
   style: const TextStyle(fontSize: 14, height: 1.25),
-  padding: kDefaultLazyTextFieldPadding,
-  decoration: LazyInputDecoration(
+  decoration: const InputDecoration(
     filled: true,
-    border: const OutlineInputBorder(),
+    border: OutlineInputBorder(),
+    labelText: 'Title',
     hintText: 'Click to edit',
-    prefixIcon: const Icon(Icons.notes, size: 16),
-    prefixIconConstraints: const BoxConstraints(minWidth: 28),
+    prefixIcon: Icon(Icons.notes),
+    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
   ),
-  decorationVisibility: LazyInputDecorationVisibility.editing,
   onStartEditing: startEditing,
   onChanged: updateDraft,
 )
 ```
 
-When `isEditing` is true, provide both `controller` and `focusNode`. When it is
-false, pass `null` for both so read-only mode stays lazy.
+When `isEditing` is true, provide both `controller` and `focusNode`. Pass null
+for both in read-only mode.
 
-For simple local state, use `StatefulLazyTextField`. For many cells sharing one
-edit manager, wrap a subtree in `LazyTextFieldControllerScope` and use
-`ScopedLazyTextField`.
+`StatefulLazyTextField` and `ScopedLazyTextField` support
+`startEditSelection`: `beginning`, `end`, `tapPosition`, or `fullSelection`.
 
-`StatefulLazyTextField` and `ScopedLazyTextField` can control the initial
-selection with `startEditSelection`: `beginning`, `end`, `tapPosition`, or
-`fullSelection`.
+## Decoration stability
 
-## Decoration
+The no-jump guarantee applies when the decoration remains layout-equivalent
+across the mode switch. Supported decoration includes:
 
-`LazyInputDecoration` is height-neutral chrome drawn outside the internal
-`TextField`, which always receives `decoration: null`. Supported fields are
-fill, hover/focus/error/disabled borders, hint text/style, prefix icon, suffix
-icon, and icon constraints.
+- native fill, borders, labels, hints, helper/error/counter regions and themes
+- prefix/suffix text and fixed-size icon slots
+- Material 2 and Material 3 focus and floating-label animations
+- custom decoration widgets whose intrinsic dimensions remain constant
+- supporting text whose layout space is reserved before editing
 
-Decoration does not add padding. `LazyTextField.padding` is the only content
-padding source.
+Do not add, remove, or resize layout-affecting decoration content when editing
+starts. In particular, changing `contentPadding`, density, constraints, border
+dimensions, icon constraints, supporting-text lines, or custom widget
+intrinsics can reflow the text. Use a stable fixed slot or an overlay instead.
+
+### Fixed slot with animated visibility
+
+Reserve the slot in both modes and animate only its paint:
+
+```dart
+InputDecoration(
+  suffixIconConstraints: const BoxConstraints.tightFor(
+    width: 40,
+    height: 40,
+  ),
+  suffixIcon: IgnorePointer(
+    ignoring: !isEditing,
+    child: AnimatedOpacity(
+      duration: const Duration(milliseconds: 150),
+      opacity: isEditing ? 1 : 0,
+      child: const Icon(Icons.check),
+    ),
+  ),
+)
+```
+
+### Overlay fallback
+
+For edit-only controls whose decoration geometry must change, keep the field
+decoration stable and overlay the control. Reserve its width in both modes when
+it must not cover text:
+
+```dart
+Stack(
+  children: [
+    LazyTextField(
+      cellId: cellId,
+      text: value,
+      isEditing: isEditing,
+      controller: controller,
+      focusNode: focusNode,
+      reservedTrailingWidth: 40,
+      decoration: const InputDecoration(
+        border: OutlineInputBorder(),
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      ),
+      onStartEditing: startEditing,
+    ),
+    if (isEditing)
+      const PositionedDirectional(
+        end: 0,
+        top: 0,
+        width: 40,
+        bottom: 0,
+        child: Icon(Icons.check),
+      ),
+  ],
+)
+```
+
+If the entire field geometry must differ while editing, use a conventional
+overlay `TextField` instead of the child-switching mode.
 
 ## Overflow marker
 
-When read-only text is clipped, `LazyTextField` shows a default red corner
-marker. Customize it with `overflowMarkerBuilder`, or pass `null` to hide it:
+When read-only text is clipped by `maxHeight`, a corner marker is shown.
+Customize or hide it with `overflowMarkerBuilder`:
 
 ```dart
 LazyTextField(
   cellId: 'row-42-notes',
   text: value,
   isEditing: false,
+  maxHeight: 48,
   onStartEditing: startEditing,
   overflowMarkerBuilder: (context, details) {
     return Icon(
@@ -167,31 +184,37 @@ LazyTextField(
 )
 ```
 
-The package still owns marker positioning and tap handling, so marker taps call
-`onReadOnlyOverflowToggle` without also starting cell editing. Use
-`LazyTextField.defaultOverflowMarkerBuilder` to delegate back to the default
-triangle from a custom builder.
+`minHeight` and `maxHeight` constrain the text viewport. Native label,
+helper, error, and counter regions remain outside that viewport.
 
-## Height Measurement
+## Height measurement
+
+`LazyTextField.computeHeightForWidth`, `LazyTextFieldLayout`, and
+`LazyTextFieldMetrics` measure the undecorated text viewport exactly:
 
 ```dart
-final height = LazyTextField.computeHeightForWidth(
+final viewportHeight = LazyTextField.computeHeightForWidth(
   text: value,
   width: columnWidth,
   style: const TextStyle(fontSize: 14, height: 1.25),
   padding: kDefaultLazyTextFieldPadding,
-  reservedLeadingWidth: 28,
-  reservedTrailingWidth: 28,
 );
 ```
 
-The layout path uses `TextPainter`, the effective text width, strut style, text
-direction, text scaler, a zero-width space for empty text and trailing newlines,
-and ceiled final heights.
+These synchronous helpers cannot include arbitrary `InputDecoration` widgets,
+whose intrinsic sizes are known only during Flutter layout. Use fixed external
+constraints or measure the rendered row when full decorated height is needed.
 
-For bounded editing, `scrollbarGutter` reserves text width for the package
-scrollbar. Use `scrollbarThickness` and `scrollbarAlignment` to control the
-thumb size and where it sits inside that reserved gutter.
+Each mounted lazy field caches its viewport layout per width and invalidates the
+cache only when text or relevant layout inputs change.
+
+## Migrating from 1.x
+
+- Replace `LazyInputDecoration` with `InputDecoration`.
+- Move `LazyTextField.padding` to `InputDecoration.contentPadding`.
+- Remove `decorationVisibility`; the native decorator remains mounted in both
+  modes to guarantee stable geometry.
+- Replace edit-only decoration changes with fixed slots or overlays.
 
 ## License
 

@@ -31,12 +31,14 @@ class _SmallLazyTextFieldExampleState extends State<SmallLazyTextFieldExample> {
               cellId: 'example-cell',
               text: _value,
               style: const TextStyle(fontSize: 16, height: 1.3),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: const LazyInputDecoration(
+              decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 hintText: 'Add a note',
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
               ),
-              decorationVisibility: LazyInputDecorationVisibility.always,
               onSave: (value) {
                 setState(() {
                   _value = value;

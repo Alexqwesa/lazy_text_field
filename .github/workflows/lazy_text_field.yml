@@ -22,14 +22,26 @@ on:
 
 jobs:
   test:
+    name: Flutter ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: minimum-3.32
+            flutter-version: 3.32.0
+            channel: stable
+          - name: stable
+            flutter-version: ''
+            channel: stable
 
     steps:
       - uses: actions/checkout@v6
 
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: ${{ matrix.flutter-version }}
+          channel: ${{ matrix.channel }}
           cache: true
 
       - name: Install dependencies

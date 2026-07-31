@@ -2,11 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:lazy_text_field/src/lazy_input_decoration.dart';
 import 'package:lazy_text_field/src/lazy_text_field.dart';
 import 'package:lazy_text_field/src/lazy_text_field_controller_scope.dart';
 import 'package:lazy_text_field/src/lazy_text_field_edit_controller.dart';
-import 'package:lazy_text_field/src/lazy_text_field_metrics.dart';
 import 'package:lazy_text_field/src/stateful_lazy_text_field.dart';
 
 /// [LazyTextField] cell wired to a shared [LazyTextFieldEditController].
@@ -21,9 +19,8 @@ class ScopedLazyTextField extends StatefulWidget {
     super.key,
     this.singleLine = false,
     this.style,
-    this.padding = kDefaultLazyTextFieldPadding,
-    this.decoration = const LazyInputDecoration(),
-    this.decorationVisibility = LazyInputDecorationVisibility.editing,
+    this.textAlignVertical,
+    this.decoration = const InputDecoration(),
     this.minHeight = 0,
     this.maxHeight,
     this.scrollbarGutter = 12,
@@ -52,14 +49,11 @@ class ScopedLazyTextField extends StatefulWidget {
   /// Text style used in both read-only and edit modes.
   final TextStyle? style;
 
-  /// Content padding used for both read-only and edit modes.
-  final EdgeInsetsGeometry padding;
+  /// Vertical text alignment used by the native [InputDecorator].
+  final TextAlignVertical? textAlignVertical;
 
-  /// Height-neutral decoration chrome around the field.
-  final LazyInputDecoration? decoration;
-
-  /// Controls when [decoration] is painted.
-  final LazyInputDecorationVisibility decorationVisibility;
+  /// Native Material decoration shared by read-only and editing modes.
+  final InputDecoration? decoration;
 
   /// Minimum surface height.
   final double minHeight;
@@ -134,9 +128,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       focusNode: focusNode,
       singleLine: widget.singleLine,
       style: widget.style,
-      padding: widget.padding,
+      textAlignVertical: widget.textAlignVertical,
       decoration: widget.decoration,
-      decorationVisibility: widget.decorationVisibility,
       minHeight: widget.minHeight,
       maxHeight: widget.maxHeight,
       scrollbarGutter: widget.scrollbarGutter,

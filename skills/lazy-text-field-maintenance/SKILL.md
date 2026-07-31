@@ -1,88 +1,59 @@
 ---
 name: lazy-text-field-maintenance
-description: Maintain or modify the lazy_text_field Flutter package. Use when changing LazyTextField internals, LazyInputDecoration rendering, lazy controller/focus allocation, exact height measurement, static/edit text alignment, tests, docs, or the visual example.
+description: Maintain or modify the lazy_text_field Flutter package, including native InputDecoration layout, lazy edit allocation, viewport measurement, static/edit alignment, tests, docs, and examples.
 ---
 
 # Lazy Text Field Maintenance
 
 ## Package Boundary
 
-Keep this package pure Flutter. Do not add Riverpod, intl, dashboard_tree, or
-application-specific dependencies.
-
-This package owns:
-
-- `LazyTextField`, `StatefulLazyTextField`, `ScopedLazyTextField`
-- `LazyInputDecoration`
-- `LazyTextFieldLayout` and `LazyTextFieldMetrics`
-- static/edit alignment tests and the visual example
-
-Keep save policies, date parsing, permissions, persistence, and app-specific
-selection behavior in wrapper/app packages.
+Keep this package pure Flutter and application-agnostic. It owns the lazy field
+widgets, edit controller/scope, text viewport measurement, native decoration
+integration, transition tests, and examples.
 
 ## Lazy Rendering Rules
 
-- Keep read-only mode lazy: do not allocate `TextEditingController`,
-  `FocusNode`, or `ScrollController` before edit mode.
-- Use a real `TextField` in edit mode, but always pass `decoration: null`.
-- Draw `LazyInputDecoration` outside the `TextField`; do not use
-  `InputDecorator` for `LazyTextField`.
-- Keep `padding` as the single content-padding source. Decorations must not add
-  layout padding.
-- Prefer `LazyTextField`, `LazyTextFieldKeys`, and `LazyTextFieldLayout` names.
-  Do not reintroduce old `LazyTextEdit*` shims.
+- Do not allocate `TextEditingController`, `FocusNode`, `ScrollController`,
+  `TextField`, or `EditableText` in read-only mode.
+- Keep one native `InputDecorator` mounted in both modes when decoration is
+  non-null.
+- Pass `decoration: null` to the inner editing `TextField`.
+- Swap only the lightweight static text child for the real editor.
+- Use `InputDecoration.contentPadding`; do not add widget-level padding.
+- Keep layout-affecting decoration structure stable across the switch.
+- Use fixed slots or external overlays for edit-only controls.
 
-## Height Measurement
+## Height And Baseline
 
-- Treat `LazyTextFieldLayout.compute` as the canonical row-height engine.
-- Measure with `TextPainter`, strut style, text scaler, direction, and the same
-  effective text width used by the widget.
+- Treat `LazyTextFieldLayout.compute` as the canonical text-viewport engine.
+- Keep the viewport render object's per-width cache and invalidate it whenever
+  text, style, strut, scale, direction, or sizing inputs change.
 - Preserve zero-width-space handling for empty text and trailing newlines.
-- Subtract reserved leading/trailing widths for prefix/suffix/other controls
-  before measuring wrapping.
-- Ceil final heights to avoid subpixel row drift.
-- When changing text layout, compare static and edit mode positions, not only
-  sizes.
-
-## Decorations
-
-`LazyInputDecoration` is intentionally a height-neutral subset of
-`InputDecoration`. Support fill, hover/focus colors, enabled/focused/error/
-disabled borders, hint text, and prefix/suffix icon slots. Do not add labels,
-helper/error rows, counters, or floating labels without redesigning height
-measurement and tests.
-
-`LazyInputDecorationVisibility.editing` is the default. Icon slot widths are
-reserved whenever decoration can affect layout, even when chrome is only painted
-in edit mode.
+- Keep static and editor text widths equal, including the editable cursor
+  gutter and reserved scrollbar/overlay widths.
+- Report an alphabetic baseline from the viewport render object.
+- Do not attempt synchronous full-height measurement of arbitrary decoration
+  widgets.
 
 ## Testing
 
-Run these after edits:
+Run:
 
 ```sh
 flutter analyze
 flutter test --coverage
-```
-
-For example changes:
-
-```sh
 cd example
 flutter analyze
-flutter build web --debug
+flutter test
+flutter build web --debug -t lib/main_live_demo.dart
 ```
 
-Keep tests focused on invariants:
+Protect these invariants:
 
-- read-only cells allocate no edit resources
-- static and edit root/viewport rects do not drift
-- bounded height reserves scrollbar gutter consistently
-- constrained-width height matches `TextPainter`
-- punctuation and soft wrapping stay aligned across modes
-- failure messages for position tests say whether a value jumped left, right,
-  up, down, wider, narrower, taller, or shorter
-
-Use the `+\n+++ +++ ++` fixture when checking fragile soft-wrap behavior: at a
-narrow width, the second logical line must wrap onto a third visual line and
-static/edit glyph positions must stay aligned.
+- no edit resources exist in read-only mode
+- the same `InputDecorator` state survives the mode switch
+- root, viewport, baseline, wrapping, and glyph positions do not jump
+- native focus and floating-label transitions animate across frames
+- fixed decoration slots remain stable
+- bounded height reserves the scrollbar gutter consistently
+- RTL, scaling, Material 2/3, overflow, selection, and context menus work

@@ -1,8 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:lazy_text_field/src/lazy_input_decoration.dart';
 import 'package:lazy_text_field/src/lazy_text_field_keys.dart';
 import 'package:lazy_text_field/src/lazy_text_field_layout.dart';
 import 'package:lazy_text_field/src/lazy_text_field_metrics.dart';
@@ -95,10 +95,9 @@ class LazyTextField extends StatefulWidget {
     this.style,
     this.strutStyle,
     this.textAlign = TextAlign.start,
+    this.textAlignVertical,
     this.textDirection,
-    this.padding = kDefaultLazyTextFieldPadding,
-    this.decoration = const LazyInputDecoration(),
-    this.decorationVisibility = LazyInputDecorationVisibility.editing,
+    this.decoration = const InputDecoration(),
     this.minHeight = 0,
     this.maxHeight,
     this.scrollbarGutter = 12,
@@ -139,6 +138,7 @@ class LazyTextField extends StatefulWidget {
     this.cursorRadius,
     this.maxLength,
     this.maxLengthEnforcement,
+    this.buildCounter,
     this.undoController,
     this.statesController,
     this.autofillHints = const <String>[],
@@ -186,17 +186,17 @@ class LazyTextField extends StatefulWidget {
   /// Horizontal text alignment.
   final TextAlign textAlign;
 
+  /// Vertical text alignment used by the native [InputDecorator].
+  final TextAlignVertical? textAlignVertical;
+
   /// Explicit text direction, or null to inherit it.
   final TextDirection? textDirection;
 
-  /// Content padding used by both read-only and edit modes.
-  final EdgeInsetsGeometry padding;
-
-  /// Height-neutral decoration chrome around the field.
-  final LazyInputDecoration? decoration;
-
-  /// Controls when [decoration] is painted.
-  final LazyInputDecorationVisibility decorationVisibility;
+  /// Native Material decoration shared by read-only and editing modes.
+  ///
+  /// Keep layout-affecting properties equivalent across the mode switch.
+  /// Use [InputDecoration.contentPadding] to control text padding.
+  final InputDecoration? decoration;
 
   /// Minimum surface height.
   final double minHeight;
@@ -218,10 +218,8 @@ class LazyTextField extends StatefulWidget {
 
   /// Extra trailing width reserved from the text layout.
   ///
-  /// Use this for chrome that is not a [LazyInputDecoration.suffixIcon]
-  /// (for example an app-owned trailing control). Prefer
-  /// [LazyInputDecoration.suffixIcon] / [LazyInputDecoration.suffixIconConstraints]
-  /// for field icons so the widget and height metrics stay aligned.
+  /// Use this for app-owned overlay controls. Prefer
+  /// [InputDecoration.suffixIcon] for controls that are part of the field.
   final double reservedTrailingWidth;
 
   /// Whether read-only overflow is currently expanded.
@@ -319,6 +317,9 @@ class LazyTextField extends StatefulWidget {
 
   /// Passed through to the internal [TextField.maxLengthEnforcement].
   final MaxLengthEnforcement? maxLengthEnforcement;
+
+  /// Builds the counter shown by the outer native [InputDecorator].
+  final InputCounterWidgetBuilder? buildCounter;
 
   /// Passed through to the internal [TextField.undoController].
   final UndoHistoryController? undoController;
@@ -434,6 +435,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
   TextEditingController? _listenedController;
   FocusNode? _listenedFocusNode;
   ScrollController? _scrollController;
+  final GlobalKey _textViewportRenderKey = GlobalKey();
   bool _isHovering = false;
   String? _lastLayoutText;
   LazyTextFieldStartEditDetails? _lastStartEditDetails;
@@ -504,7 +506,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
   }
 
   void _onFocusChanged() {
-    if (!_decorationVisible || !mounted) return;
+    if (widget.decoration == null || !mounted) return;
     setState(() {});
   }
 
@@ -520,279 +522,205 @@ class _LazyTextFieldState extends State<LazyTextField> {
     );
   }
 
-  double? _boundedMaxHeight(BoxConstraints constraints) {
-    if (widget.maxHeight != null) {
-      return widget.maxHeight;
-    }
-    if (constraints.hasBoundedHeight && constraints.maxHeight.isFinite) {
-      return constraints.maxHeight;
-    }
-    return null;
-  }
-
-  bool get _decorationCanAffectLayout {
-    return widget.decoration != null &&
-        widget.decorationVisibility != LazyInputDecorationVisibility.never;
-  }
-
-  bool get _decorationVisible {
-    return switch (widget.decorationVisibility) {
-      LazyInputDecorationVisibility.never => false,
-      LazyInputDecorationVisibility.editing => widget.isEditing,
-      LazyInputDecorationVisibility.always => true,
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     final direction = widget.textDirection ?? Directionality.of(context);
-    final resolvedPadding = widget.padding.resolve(direction);
     final resolvedStyle = _resolvedStyle(context);
     final value = widget.isEditing
         ? widget.controller?.text ?? widget.text
         : widget.text;
+    final effectiveEnabled =
+        widget.enabled ?? widget.decoration?.enabled ?? true;
+
+    Widget content = _LazyTextFieldContent(
+      cellId: widget.cellId,
+      viewportRenderKey: _textViewportRenderKey,
+      text: value,
+      isEditing: widget.isEditing,
+      controller: widget.controller,
+      focusNode: widget.focusNode,
+      style: resolvedStyle,
+      strutStyle: widget.strutStyle,
+      singleLine: widget.singleLine,
+      textAlign: widget.textAlign,
+      textAlignVertical: widget.textAlignVertical,
+      textDirection: widget.textDirection,
+      minHeight: widget.minHeight,
+      maxHeight: widget.maxHeight,
+      scrollbarGutter: widget.scrollbarGutter,
+      scrollbarThickness: widget.scrollbarThickness,
+      scrollbarAlignment: widget.scrollbarAlignment,
+      reservedTrailingWidth: widget.reservedTrailingWidth,
+      readOnlyAsLink: widget.readOnlyAsLink,
+      readOnlyOverflowExpanded: widget.readOnlyOverflowExpanded,
+      onReadOnlyOverflowToggle: widget.onReadOnlyOverflowToggle,
+      overflowMarkerSize: widget.overflowMarkerSize,
+      overflowMarkerColor: widget.overflowMarkerColor,
+      expandedOverflowMarkerColor: widget.expandedOverflowMarkerColor,
+      overflowMarkerBuilder: widget.overflowMarkerBuilder,
+      scrollController: widget.isEditing ? _scrollControllerFor() : null,
+      onChanged: widget.onChanged,
+      onSubmitted: widget.onSubmitted,
+      onEditingComplete: widget.onEditingComplete,
+      onTapOutside: widget.onTapOutside,
+      textInputAction: widget.textInputAction,
+      keyboardType: widget.keyboardType,
+      inputFormatters: widget.inputFormatters,
+      minLines: widget.minLines,
+      maxLines: widget.maxLines,
+      expands: widget.expands,
+      scrollPhysics: widget.scrollPhysics,
+      enabled: effectiveEnabled,
+      readOnly: widget.readOnly,
+      autofocus: widget.autofocus,
+      showCursor: widget.showCursor,
+      enableInteractiveSelection: widget.enableInteractiveSelection,
+      selectionControls: widget.selectionControls,
+      cursorColor: widget.cursorColor,
+      cursorWidth: widget.cursorWidth,
+      cursorHeight: widget.cursorHeight,
+      cursorRadius: widget.cursorRadius,
+      maxLength: widget.maxLength,
+      maxLengthEnforcement: widget.maxLengthEnforcement,
+      undoController: widget.undoController,
+      statesController: widget.statesController,
+      autofillHints: widget.autofillHints,
+      contextMenuBuilder: widget.contextMenuBuilder,
+      mouseCursor: widget.mouseCursor,
+    );
+
     final decoration = widget.decoration;
-    final decorationAffectsLayout = _decorationCanAffectLayout;
-    final decorationVisible = _decorationVisible;
-    final prefixWidth =
-        decorationAffectsLayout && decoration?.hasPrefixIcon == true
-        ? _iconSlotWidth(decoration?.prefixIconConstraints)
-        : 0.0;
-    final suffixWidth =
-        decorationAffectsLayout && decoration?.hasSuffixIcon == true
-        ? _iconSlotWidth(decoration?.suffixIconConstraints)
-        : 0.0;
+    if (decoration != null) {
+      content = InputDecorator(
+        decoration: _effectiveDecoration(context, decoration, value),
+        baseStyle: widget.style,
+        textAlign: widget.textAlign,
+        textAlignVertical: widget.textAlignVertical,
+        isHovering: _isHovering,
+        isFocused: widget.focusNode?.hasFocus ?? false,
+        isEmpty: value.isEmpty,
+        expands: widget.expands ?? false,
+        child: content,
+      );
+    }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final boundedMaxHeight = _boundedMaxHeight(constraints);
-        final reservesScrollbarGutter =
-            widget.maxHeight != null && widget.scrollbarGutter > 0;
-        final layoutPadding = reservesScrollbarGutter
-            ? EdgeInsets.fromLTRB(
-                resolvedPadding.left,
-                resolvedPadding.top,
-                0,
-                resolvedPadding.bottom,
-              )
-            : resolvedPadding;
-        final layout = LazyTextFieldLayout.computeFromContext(
-          context,
-          text: value,
-          width: width,
-          padding: layoutPadding,
-          singleLine: widget.singleLine,
-          style: resolvedStyle,
-          strutStyle: widget.strutStyle,
-          minHeight: widget.minHeight,
-          reservedLeadingWidth: prefixWidth,
-          reservedTrailingWidth: suffixWidth + widget.reservedTrailingWidth,
-          maxHeight: boundedMaxHeight,
-          scrollbarGutter: widget.maxHeight == null
-              ? 0
-              : widget.scrollbarGutter,
-          editableTextGutter: _editableTextGutter(widget.cursorWidth),
-        );
-        final textAreaHeight = math.max<double>(
-          0,
-          layout.height - resolvedPadding.vertical,
-        );
-        final needsScrollbar =
-            widget.isEditing &&
-            layout.hasVerticalOverflow &&
-            boundedMaxHeight != null;
-
-        final textColumn = SizedBox(
-          key: LazyTextFieldKeys.textViewport(widget.cellId),
-          width: layout.textViewportWidth,
-          height: textAreaHeight,
-          child: ClipRect(
-            child: widget.isEditing
-                ? _EditorBody(
-                    cellId: widget.cellId,
-                    controller: widget.controller!,
-                    focusNode: widget.focusNode!,
-                    style: resolvedStyle,
-                    strutStyle: widget.strutStyle,
-                    singleLine: widget.singleLine,
-                    scrollController: _scrollControllerFor(),
-                    textAlign: widget.textAlign,
-                    textDirection: widget.textDirection,
-                    hintText: decorationVisible ? decoration?.hintText : null,
-                    hintStyle: decoration?.hintStyle,
-                    onChanged: widget.onChanged,
-                    onSubmitted: widget.onSubmitted,
-                    onEditingComplete: widget.onEditingComplete,
-                    onTapOutside: widget.onTapOutside,
-                    textInputAction: widget.textInputAction,
-                    keyboardType: widget.keyboardType,
-                    inputFormatters: widget.inputFormatters,
-                    minLines: widget.minLines,
-                    maxLines: widget.maxLines,
-                    expands: widget.expands,
-                    scrollPhysics: widget.scrollPhysics,
-                    enabled: widget.enabled ?? decoration?.enabled,
-                    readOnly: widget.readOnly,
-                    autofocus: widget.autofocus,
-                    showCursor: widget.showCursor,
-                    enableInteractiveSelection:
-                        widget.enableInteractiveSelection,
-                    selectionControls: widget.selectionControls,
-                    cursorColor: widget.cursorColor,
-                    cursorWidth: widget.cursorWidth,
-                    cursorHeight: widget.cursorHeight,
-                    cursorRadius: widget.cursorRadius,
-                    maxLength: widget.maxLength,
-                    maxLengthEnforcement: widget.maxLengthEnforcement,
-                    undoController: widget.undoController,
-                    statesController: widget.statesController,
-                    autofillHints: widget.autofillHints,
-                    contextMenuBuilder: widget.contextMenuBuilder,
-                    mouseCursor: widget.mouseCursor,
-                  )
-                : _StaticTextBody(
-                    text: widget.text,
-                    style: resolvedStyle,
-                    singleLine: widget.singleLine,
-                    maxWidth: layout.textViewportWidth,
-                    textLayoutWidth: layout.textLayoutWidth,
-                    textAreaHeight: textAreaHeight,
-                    readOnlyAsLink: widget.readOnlyAsLink,
-                    hasVerticalOverflow: layout.hasVerticalOverflow,
-                    overflowExpanded: widget.readOnlyOverflowExpanded,
-                    onOverflowToggle: widget.onReadOnlyOverflowToggle,
-                    overflowMarkerSize: widget.overflowMarkerSize,
-                    overflowMarkerColor: widget.overflowMarkerColor,
-                    expandedOverflowMarkerColor:
-                        widget.expandedOverflowMarkerColor,
-                    overflowMarkerBuilder: widget.overflowMarkerBuilder,
-                    hintText: decorationVisible ? decoration?.hintText : null,
-                    hintStyle: decoration?.hintStyle,
-                  ),
-          ),
-        );
-
-        final textRow = Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (prefixWidth > 0)
-              _IconSlot(
-                key: LazyTextFieldKeys.prefixIcon(widget.cellId),
-                width: prefixWidth,
-                height: textAreaHeight,
-                visible: decorationVisible,
-                child: decoration?.prefixIcon,
-              ),
-            textColumn,
-            if (layout.reservedScrollbarWidth > 0)
-              SizedBox(
-                width: layout.reservedScrollbarWidth,
-                height: textAreaHeight,
-                child: needsScrollbar
-                    ? TextFieldTapRegion(
-                        child: _GutterScrollbar(
-                          key: LazyTextFieldKeys.scrollbar(widget.cellId),
-                          controller: _scrollControllerFor(),
-                          viewportHeight: textAreaHeight,
-                          thickness: widget.scrollbarThickness,
-                          alignment: widget.scrollbarAlignment,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            if (suffixWidth > 0)
-              _IconSlot(
-                key: LazyTextFieldKeys.suffixIcon(widget.cellId),
-                width: suffixWidth,
-                height: textAreaHeight,
-                visible: decorationVisible,
-                child: decoration?.suffixIcon,
-              ),
-          ],
-        );
-
-        final content = Padding(padding: layoutPadding, child: textRow);
-
-        final frameKey = widget.isEditing
-            ? LazyTextFieldKeys.editorSurface(widget.cellId)
-            : null;
-        final legacySurfaceKey = widget.isEditing
-            ? LazyTextFieldKeys.legacyEditorFrame(widget.cellId)
-            : LazyTextFieldKeys.legacyReadOnlySurface(widget.cellId);
-
-        Widget framed = _LazyDecorationFrame(
-          key: legacySurfaceKey,
-          decoration: decoration,
-          visible: decorationVisible,
-          isFocused: widget.focusNode?.hasFocus ?? false,
-          isHovering: _isHovering,
-          textDirection: direction,
-          child: SizedBox(width: double.infinity, child: content),
-        );
-        if (frameKey != null) {
-          framed = KeyedSubtree(key: frameKey, child: framed);
-        }
-
-        Widget root = MouseRegion(
-          cursor: widget.mouseCursor ?? MouseCursor.defer,
-          onEnter: (_) => _setHovering(true),
-          onExit: (_) => _setHovering(false),
-          child: SizedBox(
-            key: LazyTextFieldKeys.root(widget.cellId),
-            width: width,
-            height: layout.height,
-            child: framed,
-          ),
-        );
-
-        if (!widget.isEditing) {
-          root = GestureDetector(
-            key: LazyTextFieldKeys.staticSurface(widget.cellId),
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (details) {
+    final staticMode = !widget.isEditing && effectiveEnabled;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: staticMode
+          ? (details) {
               _lastStartEditDetails = _startEditDetailsFor(
                 context: context,
+                globalPosition: details.globalPosition,
                 localPosition: details.localPosition,
-                layout: layout,
-                layoutPadding: layoutPadding,
-                prefixWidth: prefixWidth,
-                textAreaHeight: textAreaHeight,
                 style: resolvedStyle,
                 direction: direction,
               );
-            },
-            onTap: () {
-              final onStartEditingWithDetails =
-                  widget.onStartEditingWithDetails;
-              if (onStartEditingWithDetails == null) {
-                widget.onStartEditing();
-                return;
-              }
-              onStartEditingWithDetails(
-                _lastStartEditDetails ??
-                    LazyTextFieldStartEditDetails(
-                      localPosition: Offset.zero,
-                      textOffset: widget.text.length,
-                    ),
-              );
-            },
-            onSecondaryTapDown: widget.onSecondaryTapDown,
-            onLongPressStart: widget.onLongPressStart,
-            child: root,
-          );
-        }
+            }
+          : null,
+      onTap: staticMode ? _startEditing : null,
+      onSecondaryTapDown: staticMode ? widget.onSecondaryTapDown : null,
+      onLongPressStart: staticMode ? widget.onLongPressStart : null,
+      child: MouseRegion(
+        cursor: widget.mouseCursor ?? MouseCursor.defer,
+        onEnter: (_) => _setHovering(true),
+        onExit: (_) => _setHovering(false),
+        child: SizedBox(
+          key: LazyTextFieldKeys.root(widget.cellId),
+          width: double.infinity,
+          child: content,
+        ),
+      ),
+    );
+  }
 
-        return root;
-      },
+  void _startEditing() {
+    final onStartEditingWithDetails = widget.onStartEditingWithDetails;
+    if (onStartEditingWithDetails == null) {
+      widget.onStartEditing();
+      return;
+    }
+    onStartEditingWithDetails(
+      _lastStartEditDetails ??
+          LazyTextFieldStartEditDetails(
+            localPosition: Offset.zero,
+            textOffset: widget.text.length,
+          ),
+    );
+  }
+
+  InputDecoration _effectiveDecoration(
+    BuildContext context,
+    InputDecoration decoration,
+    String value,
+  ) {
+    final theme = Theme.of(context);
+    var effective = decoration
+        .applyDefaults(theme.inputDecorationTheme)
+        .copyWith(
+          enabled: widget.enabled ?? decoration.enabled,
+          hintMaxLines:
+              decoration.hintMaxLines ??
+              theme.inputDecorationTheme.hintMaxLines ??
+              widget.maxLines,
+        );
+
+    if (effective.counter != null || effective.counterText != null) {
+      return effective;
+    }
+
+    final currentLength = value.characters.length;
+    if (widget.buildCounter != null) {
+      final counter = widget.buildCounter!(
+        context,
+        currentLength: currentLength,
+        maxLength: widget.maxLength,
+        isFocused: widget.focusNode?.hasFocus ?? false,
+      );
+      return effective.copyWith(
+        counter: counter == null
+            ? null
+            : Semantics(
+                container: true,
+                liveRegion: widget.focusNode?.hasFocus ?? false,
+                child: counter,
+              ),
+      );
+    }
+
+    final maxLength = widget.maxLength;
+    if (maxLength == null) {
+      return effective;
+    }
+
+    var counterText = '$currentLength';
+    var semanticCounterText = '';
+    if (maxLength > 0) {
+      counterText += '/$maxLength';
+      final remaining = (maxLength - currentLength).clamp(0, maxLength);
+      semanticCounterText = MaterialLocalizations.of(
+        context,
+      ).remainingTextFieldCharacterCount(remaining);
+    }
+
+    if (maxLength > 0 && currentLength > maxLength) {
+      effective = effective.copyWith(
+        errorText: effective.errorText ?? '',
+        counterStyle:
+            effective.errorStyle ??
+            theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+      );
+    }
+    return effective.copyWith(
+      counterText: counterText,
+      semanticCounterText: semanticCounterText,
     );
   }
 
   void _setHovering(bool value) {
     if (_isHovering == value) return;
     _isHovering = value;
-    if (_decorationVisible && mounted) {
+    if (widget.decoration != null && mounted) {
       setState(() {});
     }
   }
@@ -811,21 +739,23 @@ class _LazyTextFieldState extends State<LazyTextField> {
 
   LazyTextFieldStartEditDetails _startEditDetailsFor({
     required BuildContext context,
+    required Offset globalPosition,
     required Offset localPosition,
-    required LazyTextFieldLayout layout,
-    required EdgeInsets layoutPadding,
-    required double prefixWidth,
-    required double textAreaHeight,
     required TextStyle style,
     required TextDirection direction,
   }) {
-    final textOrigin = Offset(
-      layoutPadding.left + prefixWidth,
-      layoutPadding.top,
-    );
-    final textLocalPosition = Offset(
-      (localPosition.dx - textOrigin.dx).clamp(0.0, layout.textLayoutWidth),
-      (localPosition.dy - textOrigin.dy).clamp(0.0, textAreaHeight),
+    final renderBox =
+        _textViewportRenderKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) {
+      return LazyTextFieldStartEditDetails(
+        localPosition: localPosition,
+        textOffset: widget.text.length,
+      );
+    }
+    final textLocalPosition = renderBox.globalToLocal(globalPosition);
+    final textLayoutWidth = math.max<double>(
+      0,
+      renderBox.size.width - _editableTextGutter(widget.cursorWidth),
     );
     final painter = TextPainter(
       text: TextSpan(
@@ -837,7 +767,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
       strutStyle: widget.strutStyle ?? StrutStyle.fromTextStyle(style),
       maxLines: widget.singleLine ? 1 : null,
       ellipsis: widget.singleLine ? '\u2026' : null,
-    )..layout(maxWidth: layout.textLayoutWidth);
+    )..layout(maxWidth: textLayoutWidth);
     final textPosition = painter.getPositionForOffset(textLocalPosition);
     return LazyTextFieldStartEditDetails(
       localPosition: localPosition,
@@ -846,14 +776,534 @@ class _LazyTextFieldState extends State<LazyTextField> {
   }
 }
 
+class _LazyTextFieldContent extends StatelessWidget {
+  const _LazyTextFieldContent({
+    required this.cellId,
+    required this.viewportRenderKey,
+    required this.text,
+    required this.isEditing,
+    required this.style,
+    required this.singleLine,
+    required this.textAlign,
+    required this.minHeight,
+    required this.scrollbarGutter,
+    required this.scrollbarThickness,
+    required this.scrollbarAlignment,
+    required this.reservedTrailingWidth,
+    required this.readOnlyAsLink,
+    required this.readOnlyOverflowExpanded,
+    required this.overflowMarkerSize,
+    required this.cursorWidth,
+    required this.enabled,
+    required this.readOnly,
+    required this.autofocus,
+    this.controller,
+    this.focusNode,
+    this.strutStyle,
+    this.textAlignVertical,
+    this.textDirection,
+    this.maxHeight,
+    this.onReadOnlyOverflowToggle,
+    this.overflowMarkerColor,
+    this.expandedOverflowMarkerColor,
+    this.overflowMarkerBuilder,
+    this.scrollController,
+    this.onChanged,
+    this.onSubmitted,
+    this.onEditingComplete,
+    this.onTapOutside,
+    this.textInputAction,
+    this.keyboardType,
+    this.inputFormatters,
+    this.minLines,
+    this.maxLines,
+    this.expands,
+    this.scrollPhysics,
+    this.showCursor,
+    this.enableInteractiveSelection,
+    this.selectionControls,
+    this.cursorColor,
+    this.cursorHeight,
+    this.cursorRadius,
+    this.maxLength,
+    this.maxLengthEnforcement,
+    this.undoController,
+    this.statesController,
+    this.autofillHints,
+    this.contextMenuBuilder,
+    this.mouseCursor,
+  });
+
+  final String cellId;
+  final GlobalKey viewportRenderKey;
+  final String text;
+  final bool isEditing;
+  final TextEditingController? controller;
+  final FocusNode? focusNode;
+  final TextStyle style;
+  final StrutStyle? strutStyle;
+  final bool singleLine;
+  final TextAlign textAlign;
+  final TextAlignVertical? textAlignVertical;
+  final TextDirection? textDirection;
+  final double minHeight;
+  final double? maxHeight;
+  final double scrollbarGutter;
+  final double scrollbarThickness;
+  final AlignmentGeometry scrollbarAlignment;
+  final double reservedTrailingWidth;
+  final bool readOnlyAsLink;
+  final bool readOnlyOverflowExpanded;
+  final VoidCallback? onReadOnlyOverflowToggle;
+  final double overflowMarkerSize;
+  final Color? overflowMarkerColor;
+  final Color? expandedOverflowMarkerColor;
+  final LazyTextFieldOverflowMarkerBuilder? overflowMarkerBuilder;
+  final ScrollController? scrollController;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final VoidCallback? onEditingComplete;
+  final TapRegionCallback? onTapOutside;
+  final TextInputAction? textInputAction;
+  final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
+  final int? minLines;
+  final int? maxLines;
+  final bool? expands;
+  final ScrollPhysics? scrollPhysics;
+  final bool enabled;
+  final bool readOnly;
+  final bool autofocus;
+  final bool? showCursor;
+  final bool? enableInteractiveSelection;
+  final TextSelectionControls? selectionControls;
+  final Color? cursorColor;
+  final double cursorWidth;
+  final double? cursorHeight;
+  final Radius? cursorRadius;
+  final int? maxLength;
+  final MaxLengthEnforcement? maxLengthEnforcement;
+  final UndoHistoryController? undoController;
+  final WidgetStatesController? statesController;
+  final Iterable<String>? autofillHints;
+  final EditableTextContextMenuBuilder? contextMenuBuilder;
+  final MouseCursor? mouseCursor;
+
+  @override
+  Widget build(BuildContext context) {
+    final direction = textDirection ?? Directionality.of(context);
+    final textScaler = MediaQuery.textScalerOf(context);
+    final gutter = maxHeight == null ? 0.0 : scrollbarGutter;
+
+    return _TextViewportSizer(
+      text: text,
+      style: style,
+      strutStyle: strutStyle,
+      singleLine: singleLine,
+      textDirection: direction,
+      textScaler: textScaler,
+      minHeight: minHeight,
+      maxHeight: maxHeight,
+      reservedScrollbarWidth: gutter,
+      reservedTrailingWidth: reservedTrailingWidth,
+      editableTextGutter: _editableTextGutter(cursorWidth),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final layout = LazyTextFieldLayout.compute(
+            text: text,
+            width: constraints.maxWidth,
+            padding: EdgeInsets.zero,
+            singleLine: singleLine,
+            style: style,
+            textDirection: direction,
+            textScaler: textScaler,
+            strutStyle: strutStyle,
+            minHeight: minHeight,
+            reservedTrailingWidth: reservedTrailingWidth,
+            maxHeight: maxHeight,
+            scrollbarGutter: gutter,
+            editableTextGutter: _editableTextGutter(cursorWidth),
+          );
+          final viewport = SizedBox(
+            key: LazyTextFieldKeys.textViewport(cellId),
+            width: layout.textViewportWidth,
+            height: layout.height,
+            child: SizedBox(
+              key: viewportRenderKey,
+              child: ClipRect(
+                child: isEditing
+                    ? KeyedSubtree(
+                        key: LazyTextFieldKeys.editorSurface(cellId),
+                        child: KeyedSubtree(
+                          key: LazyTextFieldKeys.legacyEditorFrame(cellId),
+                          child: _EditorBody(
+                            cellId: cellId,
+                            controller: controller!,
+                            focusNode: focusNode!,
+                            style: style,
+                            strutStyle: strutStyle,
+                            singleLine: singleLine,
+                            scrollController: scrollController!,
+                            textAlign: textAlign,
+                            textAlignVertical: textAlignVertical,
+                            textDirection: textDirection,
+                            onChanged: onChanged,
+                            onSubmitted: onSubmitted,
+                            onEditingComplete: onEditingComplete,
+                            onTapOutside: onTapOutside,
+                            textInputAction: textInputAction,
+                            keyboardType: keyboardType,
+                            inputFormatters: inputFormatters,
+                            minLines: minLines,
+                            maxLines: maxLines,
+                            expands: expands,
+                            scrollPhysics: scrollPhysics,
+                            enabled: enabled,
+                            readOnly: readOnly,
+                            autofocus: autofocus,
+                            showCursor: showCursor,
+                            enableInteractiveSelection:
+                                enableInteractiveSelection,
+                            selectionControls: selectionControls,
+                            cursorColor: cursorColor,
+                            cursorWidth: cursorWidth,
+                            cursorHeight: cursorHeight,
+                            cursorRadius: cursorRadius,
+                            maxLength: maxLength,
+                            maxLengthEnforcement: maxLengthEnforcement,
+                            undoController: undoController,
+                            statesController: statesController,
+                            autofillHints: autofillHints,
+                            contextMenuBuilder: contextMenuBuilder,
+                            mouseCursor: mouseCursor,
+                          ),
+                        ),
+                      )
+                    : KeyedSubtree(
+                        key: LazyTextFieldKeys.staticSurface(cellId),
+                        child: KeyedSubtree(
+                          key: LazyTextFieldKeys.legacyReadOnlySurface(cellId),
+                          child: _StaticTextBody(
+                            text: text,
+                            style: style,
+                            strutStyle: strutStyle,
+                            singleLine: singleLine,
+                            textAlign: textAlign,
+                            textDirection: direction,
+                            editableTextGutter: _editableTextGutter(
+                              cursorWidth,
+                            ),
+                            readOnlyAsLink: readOnlyAsLink,
+                            hasVerticalOverflow: layout.hasVerticalOverflow,
+                            overflowExpanded: readOnlyOverflowExpanded,
+                            onOverflowToggle: onReadOnlyOverflowToggle,
+                            overflowMarkerSize: overflowMarkerSize,
+                            overflowMarkerColor: overflowMarkerColor,
+                            expandedOverflowMarkerColor:
+                                expandedOverflowMarkerColor,
+                            overflowMarkerBuilder: overflowMarkerBuilder,
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+          );
+
+          return Row(
+            mainAxisSize: MainAxisSize.max,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              viewport,
+              if (layout.reservedScrollbarWidth > 0)
+                SizedBox(
+                  width: layout.reservedScrollbarWidth,
+                  height: layout.height,
+                  child:
+                      isEditing &&
+                          layout.hasVerticalOverflow &&
+                          scrollController != null
+                      ? TextFieldTapRegion(
+                          child: _GutterScrollbar(
+                            key: LazyTextFieldKeys.scrollbar(cellId),
+                            controller: scrollController!,
+                            viewportHeight: layout.height,
+                            thickness: scrollbarThickness,
+                            alignment: scrollbarAlignment,
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              if (reservedTrailingWidth > 0)
+                SizedBox(width: reservedTrailingWidth, height: layout.height),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TextViewportSizer extends SingleChildRenderObjectWidget {
+  const _TextViewportSizer({
+    required this.text,
+    required this.style,
+    required this.singleLine,
+    required this.textDirection,
+    required this.textScaler,
+    required this.minHeight,
+    required this.reservedScrollbarWidth,
+    required this.reservedTrailingWidth,
+    required this.editableTextGutter,
+    this.strutStyle,
+    this.maxHeight,
+    required super.child,
+  });
+
+  final String text;
+  final TextStyle style;
+  final StrutStyle? strutStyle;
+  final bool singleLine;
+  final TextDirection textDirection;
+  final TextScaler textScaler;
+  final double minHeight;
+  final double? maxHeight;
+  final double reservedScrollbarWidth;
+  final double reservedTrailingWidth;
+  final double editableTextGutter;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderTextViewportSizer(
+      text: text,
+      style: style,
+      strutStyle: strutStyle,
+      singleLine: singleLine,
+      textDirection: textDirection,
+      textScaler: textScaler,
+      minHeight: minHeight,
+      maxHeight: maxHeight,
+      reservedScrollbarWidth: reservedScrollbarWidth,
+      reservedTrailingWidth: reservedTrailingWidth,
+      editableTextGutter: editableTextGutter,
+    );
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderTextViewportSizer renderObject,
+  ) {
+    renderObject
+      ..text = text
+      ..style = style
+      ..strutStyle = strutStyle
+      ..singleLine = singleLine
+      ..textDirection = textDirection
+      ..textScaler = textScaler
+      ..minHeight = minHeight
+      ..maxHeight = maxHeight
+      ..reservedScrollbarWidth = reservedScrollbarWidth
+      ..reservedTrailingWidth = reservedTrailingWidth
+      ..editableTextGutter = editableTextGutter;
+  }
+}
+
+class _RenderTextViewportSizer extends RenderProxyBox {
+  _RenderTextViewportSizer({
+    required String text,
+    required TextStyle style,
+    required StrutStyle? strutStyle,
+    required bool singleLine,
+    required TextDirection textDirection,
+    required TextScaler textScaler,
+    required double minHeight,
+    required double? maxHeight,
+    required double reservedScrollbarWidth,
+    required double reservedTrailingWidth,
+    required double editableTextGutter,
+  }) : _text = text,
+       _style = style,
+       _strutStyle = strutStyle,
+       _singleLine = singleLine,
+       _textDirection = textDirection,
+       _textScaler = textScaler,
+       _minHeight = minHeight,
+       _maxHeight = maxHeight,
+       _reservedScrollbarWidth = reservedScrollbarWidth,
+       _reservedTrailingWidth = reservedTrailingWidth,
+       _editableTextGutter = editableTextGutter;
+
+  String _text;
+  TextStyle _style;
+  StrutStyle? _strutStyle;
+  bool _singleLine;
+  TextDirection _textDirection;
+  TextScaler _textScaler;
+  double _minHeight;
+  double? _maxHeight;
+  double _reservedScrollbarWidth;
+  double _reservedTrailingWidth;
+  double _editableTextGutter;
+  double? _cachedLayoutWidth;
+  LazyTextFieldLayout? _cachedLayout;
+
+  void _invalidateLayout() {
+    _cachedLayoutWidth = null;
+    _cachedLayout = null;
+    markNeedsLayout();
+  }
+
+  set text(String value) {
+    if (_text == value) return;
+    _text = value;
+    _invalidateLayout();
+  }
+
+  set style(TextStyle value) {
+    if (_style == value) return;
+    _style = value;
+    _invalidateLayout();
+  }
+
+  set strutStyle(StrutStyle? value) {
+    if (_strutStyle == value) return;
+    _strutStyle = value;
+    _invalidateLayout();
+  }
+
+  set singleLine(bool value) {
+    if (_singleLine == value) return;
+    _singleLine = value;
+    _invalidateLayout();
+  }
+
+  set textDirection(TextDirection value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    _invalidateLayout();
+  }
+
+  set textScaler(TextScaler value) {
+    if (_textScaler == value) return;
+    _textScaler = value;
+    _invalidateLayout();
+  }
+
+  set minHeight(double value) {
+    if (_minHeight == value) return;
+    _minHeight = value;
+    _invalidateLayout();
+  }
+
+  set maxHeight(double? value) {
+    if (_maxHeight == value) return;
+    _maxHeight = value;
+    _invalidateLayout();
+  }
+
+  set reservedScrollbarWidth(double value) {
+    if (_reservedScrollbarWidth == value) return;
+    _reservedScrollbarWidth = value;
+    _invalidateLayout();
+  }
+
+  set reservedTrailingWidth(double value) {
+    if (_reservedTrailingWidth == value) return;
+    _reservedTrailingWidth = value;
+    _invalidateLayout();
+  }
+
+  set editableTextGutter(double value) {
+    if (_editableTextGutter == value) return;
+    _editableTextGutter = value;
+    _invalidateLayout();
+  }
+
+  LazyTextFieldLayout _layoutFor(double width) {
+    if (_cachedLayoutWidth == width && _cachedLayout != null) {
+      return _cachedLayout!;
+    }
+    final layout = LazyTextFieldLayout.compute(
+      text: _text,
+      width: math.max(0, width),
+      padding: EdgeInsets.zero,
+      singleLine: _singleLine,
+      style: _style,
+      textDirection: _textDirection,
+      textScaler: _textScaler,
+      strutStyle: _strutStyle,
+      minHeight: _minHeight,
+      reservedTrailingWidth: _reservedTrailingWidth,
+      maxHeight: _maxHeight,
+      scrollbarGutter: _reservedScrollbarWidth,
+      editableTextGutter: _editableTextGutter,
+    );
+    _cachedLayoutWidth = width;
+    _cachedLayout = layout;
+    return layout;
+  }
+
+  double _widthFor(BoxConstraints constraints) {
+    if (constraints.hasBoundedWidth) {
+      return constraints.maxWidth;
+    }
+    return constraints.constrainWidth(
+      child?.getMaxIntrinsicWidth(double.infinity) ?? 0,
+    );
+  }
+
+  @override
+  double computeMinIntrinsicHeight(double width) => _layoutFor(width).height;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => _layoutFor(width).height;
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) {
+    final width = _widthFor(constraints);
+    return constraints.constrain(Size(width, _layoutFor(width).height));
+  }
+
+  @override
+  void performLayout() {
+    final width = _widthFor(constraints);
+    size = constraints.constrain(Size(width, _layoutFor(width).height));
+    child?.layout(BoxConstraints.tight(size));
+  }
+
+  @override
+  double? computeDistanceToActualBaseline(TextBaseline baseline) {
+    final textWidth = math.max<double>(
+      0,
+      size.width -
+          _reservedScrollbarWidth -
+          _reservedTrailingWidth -
+          _editableTextGutter,
+    );
+    final painter = TextPainter(
+      text: TextSpan(
+        text: LazyTextFieldLayout.measureText(_text),
+        style: _style,
+      ),
+      textDirection: _textDirection,
+      textScaler: _textScaler,
+      strutStyle: _strutStyle ?? StrutStyle.fromTextStyle(_style),
+      maxLines: _singleLine ? 1 : null,
+      ellipsis: _singleLine ? '\u2026' : null,
+    )..layout(maxWidth: textWidth);
+    return painter.computeDistanceToActualBaseline(baseline);
+  }
+}
+
 class _StaticTextBody extends StatelessWidget {
   const _StaticTextBody({
     required this.text,
     required this.style,
+    required this.strutStyle,
     required this.singleLine,
-    required this.maxWidth,
-    required this.textLayoutWidth,
-    required this.textAreaHeight,
+    required this.textAlign,
+    required this.textDirection,
+    required this.editableTextGutter,
     required this.readOnlyAsLink,
     required this.hasVerticalOverflow,
     required this.overflowExpanded,
@@ -862,16 +1312,15 @@ class _StaticTextBody extends StatelessWidget {
     this.overflowMarkerColor,
     this.expandedOverflowMarkerColor,
     this.overflowMarkerBuilder,
-    this.hintText,
-    this.hintStyle,
   });
 
   final String text;
   final TextStyle style;
+  final StrutStyle? strutStyle;
   final bool singleLine;
-  final double maxWidth;
-  final double textLayoutWidth;
-  final double textAreaHeight;
+  final TextAlign textAlign;
+  final TextDirection textDirection;
+  final double editableTextGutter;
   final bool readOnlyAsLink;
   final bool hasVerticalOverflow;
   final bool overflowExpanded;
@@ -880,96 +1329,102 @@ class _StaticTextBody extends StatelessWidget {
   final Color? overflowMarkerColor;
   final Color? expandedOverflowMarkerColor;
   final LazyTextFieldOverflowMarkerBuilder? overflowMarkerBuilder;
-  final String? hintText;
-  final TextStyle? hintStyle;
 
   @override
   Widget build(BuildContext context) {
-    final direction = Directionality.of(context);
     final textScaler = MediaQuery.textScalerOf(context);
-    final displayText = text.isEmpty ? hintText ?? text : text;
-    final displayStyle = text.isEmpty && hintText != null
-        ? style.merge(hintStyle)
-        : style;
-
-    final paintedText = CustomPaint(
-      painter: _StaticTextPainter(
-        text: displayText,
-        style: displayStyle,
-        singleLine: singleLine,
-        direction: direction,
-        textScaler: textScaler,
-        maxWidth: textLayoutWidth,
-      ),
-      size: Size(maxWidth, textAreaHeight),
-    );
-
-    Widget body = paintedText;
-
-    if (text.isNotEmpty) {
-      final layoutPainter = TextPainter(
-        text: TextSpan(
-          text: LazyTextFieldLayout.measureText(text),
-          style: style,
-        ),
-        textDirection: direction,
-        textScaler: textScaler,
-        strutStyle: StrutStyle.fromTextStyle(style),
-        maxLines: singleLine ? 1 : null,
-        ellipsis: singleLine ? '\u2026' : null,
-      )..layout(maxWidth: textLayoutWidth);
-
-      final overflowsWidth = singleLine && layoutPainter.didExceedMaxLines;
-      final overflowsHeight = !singleLine && hasVerticalOverflow;
-      final hasHiddenText = overflowsWidth || overflowsHeight;
-
-      if (hasHiddenText || overflowExpanded) {
-        final markerColor = overflowExpanded
-            ? expandedOverflowMarkerColor ?? Colors.red
-            : overflowMarkerColor ?? Colors.red;
-        final markerDetails = LazyTextFieldOverflowMarkerDetails(
-          size: overflowMarkerSize,
-          color: markerColor,
-          expanded: overflowExpanded,
-          hasHiddenText: hasHiddenText,
-          onToggle: onOverflowToggle,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textLayoutWidth = math.max<double>(
+          0,
+          constraints.maxWidth - editableTextGutter,
+        );
+        final paintedText = CustomPaint(
+          painter: _StaticTextPainter(
+            text: text,
+            style: style,
+            strutStyle: strutStyle,
+            singleLine: singleLine,
+            textAlign: textAlign,
+            direction: textDirection,
+            textScaler: textScaler,
+            maxWidth: textLayoutWidth,
+          ),
+          size: Size(constraints.maxWidth, constraints.maxHeight),
         );
 
-        final markerBuilder = overflowMarkerBuilder;
-        if (markerBuilder != null) {
-          final marker = _OverflowCornerMarker(
-            details: markerDetails,
-            builder: markerBuilder,
-          );
+        Widget body = paintedText;
+        if (text.isNotEmpty) {
+          final layoutPainter = TextPainter(
+            text: TextSpan(
+              text: LazyTextFieldLayout.measureText(text),
+              style: style,
+            ),
+            textAlign: textAlign,
+            textDirection: textDirection,
+            textScaler: textScaler,
+            strutStyle: strutStyle ?? StrutStyle.fromTextStyle(style),
+            maxLines: singleLine ? 1 : null,
+            ellipsis: singleLine ? '\u2026' : null,
+          )..layout(maxWidth: textLayoutWidth);
 
-          body = Stack(
-            fit: StackFit.passthrough,
-            children: [
-              paintedText,
-              Positioned(right: 0, bottom: 0, child: marker),
-            ],
-          );
+          final overflowsWidth = singleLine && layoutPainter.didExceedMaxLines;
+          final overflowsHeight = !singleLine && hasVerticalOverflow;
+          final hasHiddenText = overflowsWidth || overflowsHeight;
+
+          if (hasHiddenText || overflowExpanded) {
+            final markerColor = overflowExpanded
+                ? expandedOverflowMarkerColor ?? Colors.red
+                : overflowMarkerColor ?? Colors.red;
+            final markerDetails = LazyTextFieldOverflowMarkerDetails(
+              size: overflowMarkerSize,
+              color: markerColor,
+              expanded: overflowExpanded,
+              hasHiddenText: hasHiddenText,
+              onToggle: onOverflowToggle,
+            );
+
+            final markerBuilder = overflowMarkerBuilder;
+            if (markerBuilder != null) {
+              body = Stack(
+                fit: StackFit.passthrough,
+                children: [
+                  paintedText,
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: _OverflowCornerMarker(
+                      details: markerDetails,
+                      builder: markerBuilder,
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            if (hasHiddenText) {
+              body = Tooltip(
+                message: text,
+                waitDuration: const Duration(milliseconds: 350),
+                constraints: const BoxConstraints(maxWidth: 900),
+                ignorePointer: true,
+                child: body,
+              );
+            }
+          }
         }
 
-        if (hasHiddenText) {
-          body = Tooltip(
-            message: text,
-            waitDuration: const Duration(milliseconds: 350),
-            constraints: const BoxConstraints(maxWidth: 900),
-            ignorePointer: true,
+        return Semantics(
+          label: text,
+          button: true,
+          child: MouseRegion(
+            cursor: readOnlyAsLink
+                ? SystemMouseCursors.click
+                : MouseCursor.defer,
             child: body,
-          );
-        }
-      }
-    }
-
-    return Semantics(
-      label: text,
-      button: true,
-      child: MouseRegion(
-        cursor: readOnlyAsLink ? SystemMouseCursors.click : MouseCursor.defer,
-        child: body,
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -978,7 +1433,9 @@ class _StaticTextPainter extends CustomPainter {
   const _StaticTextPainter({
     required this.text,
     required this.style,
+    required this.strutStyle,
     required this.singleLine,
+    required this.textAlign,
     required this.direction,
     required this.textScaler,
     required this.maxWidth,
@@ -986,7 +1443,9 @@ class _StaticTextPainter extends CustomPainter {
 
   final String text;
   final TextStyle style;
+  final StrutStyle? strutStyle;
   final bool singleLine;
+  final TextAlign textAlign;
   final TextDirection direction;
   final TextScaler textScaler;
   final double maxWidth;
@@ -995,9 +1454,10 @@ class _StaticTextPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final painter = TextPainter(
       text: TextSpan(text: LazyTextFieldLayout.measureText(text), style: style),
+      textAlign: textAlign,
       textDirection: direction,
       textScaler: textScaler,
-      strutStyle: StrutStyle.fromTextStyle(style),
+      strutStyle: strutStyle ?? StrutStyle.fromTextStyle(style),
       maxLines: singleLine ? 1 : null,
       ellipsis: singleLine ? '\u2026' : null,
     )..layout(maxWidth: maxWidth);
@@ -1009,7 +1469,9 @@ class _StaticTextPainter extends CustomPainter {
   bool shouldRepaint(covariant _StaticTextPainter old) {
     return text != old.text ||
         style != old.style ||
+        strutStyle != old.strutStyle ||
         singleLine != old.singleLine ||
+        textAlign != old.textAlign ||
         direction != old.direction ||
         textScaler != old.textScaler ||
         maxWidth != old.maxWidth;
@@ -1027,9 +1489,8 @@ class _EditorBody extends StatelessWidget {
     required this.cursorWidth,
     this.strutStyle,
     this.textAlign = TextAlign.start,
+    this.textAlignVertical,
     this.textDirection,
-    this.hintText,
-    this.hintStyle,
     this.onChanged,
     this.onSubmitted,
     this.onEditingComplete,
@@ -1067,9 +1528,8 @@ class _EditorBody extends StatelessWidget {
   final bool singleLine;
   final ScrollController scrollController;
   final TextAlign textAlign;
+  final TextAlignVertical? textAlignVertical;
   final TextDirection? textDirection;
-  final String? hintText;
-  final TextStyle? hintStyle;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final VoidCallback? onEditingComplete;
@@ -1121,6 +1581,7 @@ class _EditorBody extends StatelessWidget {
       style: style,
       strutStyle: strutStyle ?? StrutStyle.fromTextStyle(style),
       textAlign: textAlign,
+      textAlignVertical: textAlignVertical,
       textDirection: textDirection,
       cursorColor: cursorColor ?? colorScheme.primary,
       cursorWidth: cursorWidth,
@@ -1162,140 +1623,10 @@ class _EditorBody extends StatelessWidget {
         ).copyWith(thickness: WidgetStateProperty.all(0)),
         child: ScrollConfiguration(
           behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (controller.text.isEmpty && hintText != null)
-                IgnorePointer(
-                  child: Align(
-                    alignment: _alignmentFor(
-                      textAlign,
-                      Directionality.of(context),
-                    ),
-                    child: Text(
-                      hintText!,
-                      maxLines: singleLine ? 1 : null,
-                      overflow: singleLine
-                          ? TextOverflow.ellipsis
-                          : TextOverflow.clip,
-                      style: style.merge(hintStyle),
-                      textAlign: textAlign,
-                      textDirection: textDirection,
-                    ),
-                  ),
-                ),
-              field,
-            ],
-          ),
+          child: field,
         ),
       ),
     );
-  }
-}
-
-class _IconSlot extends StatelessWidget {
-  const _IconSlot({
-    required this.width,
-    required this.height,
-    required this.visible,
-    this.child,
-    super.key,
-  });
-
-  final double width;
-  final double height;
-  final bool visible;
-  final Widget? child;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: height,
-      child: visible && child != null
-          ? Center(child: child)
-          : const SizedBox.shrink(),
-    );
-  }
-}
-
-class _LazyDecorationFrame extends StatelessWidget {
-  const _LazyDecorationFrame({
-    required this.decoration,
-    required this.visible,
-    required this.isFocused,
-    required this.isHovering,
-    required this.textDirection,
-    required this.child,
-    super.key,
-  });
-
-  final LazyInputDecoration? decoration;
-  final bool visible;
-  final bool isFocused;
-  final bool isHovering;
-  final TextDirection textDirection;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!visible || decoration == null) {
-      return child;
-    }
-
-    final states = <WidgetState>{
-      if (!decoration!.enabled) WidgetState.disabled,
-      if (decoration!.hasError) WidgetState.error,
-      if (isFocused) WidgetState.focused,
-      if (isHovering) WidgetState.hovered,
-    };
-
-    return CustomPaint(
-      painter: _LazyDecorationPainter(
-        decoration: decoration!,
-        border: _resolveBorder(context, decoration!, states),
-        fillColor: _resolveFillColor(context, decoration!, states),
-        textDirection: textDirection,
-      ),
-      child: child,
-    );
-  }
-}
-
-class _LazyDecorationPainter extends CustomPainter {
-  const _LazyDecorationPainter({
-    required this.decoration,
-    required this.border,
-    required this.fillColor,
-    required this.textDirection,
-  });
-
-  final LazyInputDecoration decoration;
-  final InputBorder border;
-  final Color? fillColor;
-  final TextDirection textDirection;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    if (fillColor != null) {
-      final paint = Paint()..color = fillColor!;
-      final path = border == InputBorder.none
-          ? (Path()..addRect(rect))
-          : border.getOuterPath(rect, textDirection: textDirection);
-      canvas.drawPath(path, paint);
-    }
-    if (border != InputBorder.none) {
-      border.paint(canvas, rect, textDirection: textDirection);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _LazyDecorationPainter oldDelegate) {
-    return decoration != oldDelegate.decoration ||
-        border != oldDelegate.border ||
-        fillColor != oldDelegate.fillColor ||
-        textDirection != oldDelegate.textDirection;
   }
 }
 
@@ -1504,88 +1835,6 @@ class _OverflowCornerMarkerPainter extends CustomPainter {
       color != oldDelegate.color || outlined != oldDelegate.outlined;
 }
 
-InputBorder _resolveBorder(
-  BuildContext context,
-  LazyInputDecoration decoration,
-  Set<WidgetState> states,
-) {
-  final candidate = switch ((
-    states.contains(WidgetState.disabled),
-    states.contains(WidgetState.focused),
-    states.contains(WidgetState.error),
-  )) {
-    (true, _, true) => decoration.errorBorder ?? decoration.disabledBorder,
-    (true, _, false) => decoration.disabledBorder,
-    (false, true, true) => decoration.focusedErrorBorder,
-    (false, true, false) => decoration.focusedBorder,
-    (false, false, true) => decoration.errorBorder,
-    (false, false, false) => decoration.enabledBorder,
-  };
-
-  return WidgetStateProperty.resolveAs<InputBorder?>(
-        candidate ?? decoration.border,
-        states,
-      ) ??
-      _defaultBorder(context, states);
-}
-
-InputBorder _defaultBorder(BuildContext context, Set<WidgetState> states) {
-  final theme = Theme.of(context);
-  final colorScheme = theme.colorScheme;
-  final side = switch ((
-    states.contains(WidgetState.disabled),
-    states.contains(WidgetState.focused),
-    states.contains(WidgetState.error),
-    states.contains(WidgetState.hovered),
-  )) {
-    (true, _, _, _) => BorderSide(color: theme.disabledColor),
-    (false, true, true, _) => BorderSide(color: colorScheme.error, width: 2),
-    (false, true, false, _) => BorderSide(color: colorScheme.primary, width: 2),
-    (false, false, true, _) => BorderSide(color: colorScheme.error),
-    (false, false, false, true) => BorderSide(color: colorScheme.onSurface),
-    (false, false, false, false) => BorderSide(color: theme.dividerColor),
-  };
-  return UnderlineInputBorder(borderSide: side);
-}
-
-Color? _resolveFillColor(
-  BuildContext context,
-  LazyInputDecoration decoration,
-  Set<WidgetState> states,
-) {
-  if (decoration.filled != true) {
-    return null;
-  }
-  if (states.contains(WidgetState.disabled)) {
-    return decoration.fillColor ??
-        Theme.of(context).disabledColor.withValues(alpha: 0.08);
-  }
-  if (states.contains(WidgetState.focused) && decoration.focusColor != null) {
-    return decoration.focusColor;
-  }
-  if (states.contains(WidgetState.hovered) && decoration.hoverColor != null) {
-    return decoration.hoverColor;
-  }
-  return decoration.fillColor ??
-      Theme.of(context).colorScheme.surfaceContainerHighest;
-}
-
-double _iconSlotWidth(BoxConstraints? constraints) {
-  if (constraints == null) {
-    return kMinInteractiveDimension;
-  }
-  if (constraints.hasTightWidth && constraints.maxWidth.isFinite) {
-    return constraints.maxWidth;
-  }
-  if (constraints.minWidth.isFinite && constraints.minWidth > 0) {
-    return constraints.minWidth;
-  }
-  if (constraints.maxWidth.isFinite) {
-    return constraints.maxWidth;
-  }
-  return kMinInteractiveDimension;
-}
-
 double _editableTextGutter(double cursorWidth) {
   return cursorWidth + 1;
 }
@@ -1600,24 +1849,4 @@ Widget _defaultEditorContextMenuBuilder(
   return AdaptiveTextSelectionToolbar.editableText(
     editableTextState: editableTextState,
   );
-}
-
-Alignment _alignmentFor(TextAlign textAlign, TextDirection direction) {
-  return switch (textAlign) {
-    TextAlign.center => Alignment.center,
-    TextAlign.right => Alignment.centerRight,
-    TextAlign.end =>
-      direction == TextDirection.rtl
-          ? Alignment.centerLeft
-          : Alignment.centerRight,
-    TextAlign.left => Alignment.centerLeft,
-    TextAlign.start =>
-      direction == TextDirection.rtl
-          ? Alignment.centerRight
-          : Alignment.centerLeft,
-    TextAlign.justify =>
-      direction == TextDirection.rtl
-          ? Alignment.centerRight
-          : Alignment.centerLeft,
-  };
 }

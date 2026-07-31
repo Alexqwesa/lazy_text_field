@@ -334,7 +334,11 @@ void main() {
             focusNode: focusNode,
             isEditing: true,
             style: textStyle,
-            padding: padding,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              isCollapsed: true,
+              contentPadding: padding,
+            ),
             onStartEditing: () {},
           ),
         ),
@@ -459,7 +463,7 @@ void main() {
     expect(find.byKey(LazyTextFieldKeys.scrollbar(cellId)), findsNothing);
     expect(
       staticViewportSize.width,
-      cellWidth - padding.left - scrollbarGutter,
+      cellWidth - padding.horizontal - scrollbarGutter,
     );
 
     await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
@@ -612,10 +616,8 @@ void main() {
             text: 'line 1\nline 2\nline 3\nline 4',
             isEditing: false,
             style: textStyle,
-            padding: padding,
             maxHeight: 30,
             decoration: null,
-            decorationVisibility: LazyInputDecorationVisibility.never,
             onStartEditing: () => startEditCount++,
             onReadOnlyOverflowToggle: () => toggleCount++,
           ),
@@ -654,10 +656,8 @@ void main() {
             text: 'line 1\nline 2\nline 3\nline 4',
             isEditing: false,
             style: textStyle,
-            padding: padding,
             maxHeight: 30,
             decoration: null,
-            decorationVisibility: LazyInputDecorationVisibility.never,
             overflowMarkerSize: 18,
             overflowMarkerColor: Colors.purple,
             overflowMarkerBuilder: (context, details) {
@@ -710,10 +710,8 @@ void main() {
             text: 'line 1\nline 2\nline 3\nline 4',
             isEditing: false,
             style: textStyle,
-            padding: padding,
             maxHeight: 30,
             decoration: null,
-            decorationVisibility: LazyInputDecorationVisibility.never,
             overflowMarkerBuilder: null,
             onReadOnlyOverflowToggle: () {},
             onStartEditing: () {},
@@ -743,10 +741,8 @@ void main() {
             text: 'short',
             isEditing: false,
             style: textStyle,
-            padding: padding,
             maxHeight: 80,
             decoration: null,
-            decorationVisibility: LazyInputDecorationVisibility.never,
             readOnlyOverflowExpanded: true,
             onReadOnlyOverflowToggle: () {},
             onStartEditing: () {},
@@ -779,10 +775,8 @@ void main() {
             text: 'short',
             isEditing: false,
             style: textStyle,
-            padding: padding,
             maxHeight: 80,
             decoration: null,
-            decorationVisibility: LazyInputDecorationVisibility.never,
             readOnlyOverflowExpanded: true,
             expandedOverflowMarkerColor: Colors.teal,
             overflowMarkerBuilder: (context, details) {
@@ -819,10 +813,8 @@ void main() {
             text: 'line 1\nline 2\nline 3\nline 4',
             isEditing: false,
             style: textStyle,
-            padding: padding,
             maxHeight: 30,
             decoration: null,
-            decorationVisibility: LazyInputDecorationVisibility.never,
             onReadOnlyOverflowToggle: () {},
             onStartEditing: () {},
           ),
@@ -1163,18 +1155,17 @@ void main() {
   });
 
   testWidgets(
-    'decoration visibility controls chrome but keeps layout reserved',
+    'native decoration and InputDecorator state survive the mode switch',
     (tester) async {
-      final controller = TextEditingController(text: 'abc def ghi jkl mno');
+      final controller = TextEditingController(text: 'stable wrapped text');
       final focusNode = FocusNode();
-
       addTearDown(controller.dispose);
       addTearDown(focusNode.dispose);
 
       await tester.pumpWidget(
         _TestApp(
           child: SizedBox(
-            width: cellWidth,
+            width: 220,
             child: _LazyCellHarness(
               cellId: cellId,
               controller: controller,
@@ -1184,308 +1175,260 @@ void main() {
               padding: padding,
               maxHeight: null,
               scrollbarGutter: scrollbarGutter,
-              decoration: const LazyInputDecoration(
-                prefixIcon: Icon(Icons.search, size: 12),
-                prefixIconConstraints: BoxConstraints(minWidth: 24),
-                suffixIcon: Icon(Icons.clear, size: 12),
-                suffixIconConstraints: BoxConstraints(minWidth: 20),
+              decoration: const InputDecoration(
+                filled: true,
+                border: OutlineInputBorder(),
+                labelText: 'Label',
+                helperText: 'Reserved supporting line',
+                prefixIcon: Icon(Icons.search, size: 16),
+                prefixIconConstraints: BoxConstraints.tightFor(width: 32),
+                suffixIcon: Icon(Icons.clear, size: 16),
+                suffixIconConstraints: BoxConstraints.tightFor(width: 32),
               ),
             ),
           ),
         ),
       );
 
-      final staticViewportRect = tester.getRect(
-        find.byKey(LazyTextFieldKeys.textViewport(cellId)),
+      final decoratorFinder = find.byType(InputDecorator);
+      final decoratorState = tester.state(decoratorFinder);
+      final staticRoot = tester.getRect(
+        find.byKey(LazyTextFieldKeys.root(cellId)),
       );
-
-      expect(find.byKey(LazyTextFieldKeys.prefixIcon(cellId)), findsOneWidget);
-      expect(find.byKey(LazyTextFieldKeys.suffixIcon(cellId)), findsOneWidget);
-      expect(find.byIcon(Icons.search), findsNothing);
-      expect(find.byIcon(Icons.clear), findsNothing);
-      expect(staticViewportRect.width, cellWidth - padding.horizontal - 44);
-
-      await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
-      await tester.pump();
-
-      final editViewportRect = tester.getRect(
+      final staticViewport = tester.getRect(
         find.byKey(LazyTextFieldKeys.textViewport(cellId)),
       );
 
       expect(find.byIcon(Icons.search), findsOneWidget);
       expect(find.byIcon(Icons.clear), findsOneWidget);
-      _expectRectClose(editViewportRect, staticViewportRect);
+      expect(find.text('Reserved supporting line'), findsOneWidget);
+
+      await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
+      await tester.pump();
+
+      expect(identical(tester.state(decoratorFinder), decoratorState), isTrue);
+      _expectRectClose(
+        tester.getRect(find.byKey(LazyTextFieldKeys.root(cellId))),
+        staticRoot,
+        tolerance: 0.01,
+      );
+      _expectRectClose(
+        tester.getRect(find.byKey(LazyTextFieldKeys.textViewport(cellId))),
+        staticViewport,
+        tolerance: 0.01,
+      );
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.byType(EditableText), findsOneWidget);
     },
   );
 
-  testWidgets('always-visible icons paint in static mode', (tester) async {
-    await tester.pumpWidget(
-      _TestApp(
-        child: SizedBox(
-          width: cellWidth,
-          child: LazyTextField(
-            cellId: cellId,
-            text: 'notes',
-            isEditing: false,
-            style: textStyle,
-            padding: padding,
-            decoration: const LazyInputDecoration(
-              prefixIcon: Icon(Icons.search, size: 12),
-              prefixIconConstraints: BoxConstraints(minWidth: 24),
-              suffixIcon: Icon(Icons.clear, size: 12),
-              suffixIconConstraints: BoxConstraints(minWidth: 20),
-            ),
-            decorationVisibility: LazyInputDecorationVisibility.always,
-            onStartEditing: () {},
-          ),
-        ),
-      ),
-    );
-
-    expect(find.byKey(LazyTextFieldKeys.prefixIcon(cellId)), findsOneWidget);
-    expect(find.byKey(LazyTextFieldKeys.suffixIcon(cellId)), findsOneWidget);
-    expect(find.byIcon(Icons.search), findsOneWidget);
-    expect(find.byIcon(Icons.clear), findsOneWidget);
-    expect(
-      tester.getSize(find.byKey(LazyTextFieldKeys.textViewport(cellId))).width,
-      cellWidth - padding.horizontal - 44,
-    );
-  });
-
-  testWidgets('never-visible decoration skips icon slots', (tester) async {
-    await tester.pumpWidget(
-      _TestApp(
-        child: SizedBox(
-          width: cellWidth,
-          child: LazyTextField(
-            cellId: cellId,
-            text: 'notes',
-            isEditing: false,
-            style: textStyle,
-            padding: padding,
-            decoration: const LazyInputDecoration(
-              prefixIcon: Icon(Icons.search, size: 12),
-              prefixIconConstraints: BoxConstraints(minWidth: 24),
-              suffixIcon: Icon(Icons.clear, size: 12),
-              suffixIconConstraints: BoxConstraints(minWidth: 20),
-            ),
-            decorationVisibility: LazyInputDecorationVisibility.never,
-            onStartEditing: () {},
-          ),
-        ),
-      ),
-    );
-
-    expect(find.byKey(LazyTextFieldKeys.prefixIcon(cellId)), findsNothing);
-    expect(find.byKey(LazyTextFieldKeys.suffixIcon(cellId)), findsNothing);
-    expect(find.byIcon(Icons.search), findsNothing);
-    expect(find.byIcon(Icons.clear), findsNothing);
-    expect(
-      tester.getSize(find.byKey(LazyTextFieldKeys.textViewport(cellId))).width,
-      cellWidth - padding.horizontal,
-    );
-  });
-
-  testWidgets('prefix-only and suffix-only reserve their own widths', (
+  testWidgets('decorated editor matches native TextField geometry', (
     tester,
   ) async {
+    const decoration = InputDecoration(
+      filled: true,
+      border: OutlineInputBorder(),
+      labelText: 'Label',
+      helperText: 'Supporting line',
+      prefixIcon: Icon(Icons.search, size: 16),
+      prefixIconConstraints: BoxConstraints.tightFor(width: 32),
+      suffixIcon: Icon(Icons.clear, size: 16),
+      suffixIconConstraints: BoxConstraints.tightFor(width: 32),
+      contentPadding: padding,
+    );
+    final lazyController = TextEditingController(text: 'matching text');
+    final lazyFocusNode = FocusNode();
+    final nativeController = TextEditingController(text: 'matching text');
+    final nativeFocusNode = FocusNode();
+    addTearDown(lazyController.dispose);
+    addTearDown(lazyFocusNode.dispose);
+    addTearDown(nativeController.dispose);
+    addTearDown(nativeFocusNode.dispose);
+
     await tester.pumpWidget(
       _TestApp(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              width: cellWidth,
+              width: 220,
               child: LazyTextField(
-                cellId: 'prefix-only',
-                text: 'a',
-                isEditing: false,
+                cellId: cellId,
+                text: lazyController.text,
+                isEditing: true,
+                controller: lazyController,
+                focusNode: lazyFocusNode,
                 style: textStyle,
-                padding: padding,
-                decoration: const LazyInputDecoration(
-                  prefixIcon: Icon(Icons.search, size: 12),
-                  prefixIconConstraints: BoxConstraints(minWidth: 24),
-                ),
-                decorationVisibility: LazyInputDecorationVisibility.always,
+                decoration: decoration,
                 onStartEditing: () {},
               ),
             ),
+            const SizedBox(height: 20),
             SizedBox(
-              width: cellWidth,
-              child: LazyTextField(
-                cellId: 'suffix-only',
-                text: 'a',
-                isEditing: false,
+              key: const ValueKey('native-field'),
+              width: 220,
+              child: TextField(
+                controller: nativeController,
+                focusNode: nativeFocusNode,
                 style: textStyle,
-                padding: padding,
-                decoration: const LazyInputDecoration(
-                  suffixIcon: Icon(Icons.clear, size: 12),
-                  suffixIconConstraints: BoxConstraints(minWidth: 20),
-                ),
-                decorationVisibility: LazyInputDecorationVisibility.always,
-                onStartEditing: () {},
+                strutStyle: StrutStyle.fromTextStyle(textStyle),
+                maxLines: null,
+                decoration: decoration,
               ),
             ),
           ],
         ),
       ),
     );
-
-    expect(
-      tester
-          .getSize(find.byKey(LazyTextFieldKeys.textViewport('prefix-only')))
-          .width,
-      cellWidth - padding.horizontal - 24,
-    );
-    expect(
-      tester
-          .getSize(find.byKey(LazyTextFieldKeys.textViewport('suffix-only')))
-          .width,
-      cellWidth - padding.horizontal - 20,
-    );
-    expect(
-      find.byKey(LazyTextFieldKeys.suffixIcon('prefix-only')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(LazyTextFieldKeys.prefixIcon('suffix-only')),
-      findsNothing,
-    );
-  });
-
-  testWidgets('null icon constraints use kMinInteractiveDimension', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _TestApp(
-        child: SizedBox(
-          width: 200,
-          child: LazyTextField(
-            cellId: cellId,
-            text: 'a',
-            isEditing: false,
-            style: textStyle,
-            padding: padding,
-            decoration: const LazyInputDecoration(
-              prefixIcon: Icon(Icons.search, size: 12),
-              suffixIcon: Icon(Icons.clear, size: 12),
-            ),
-            decorationVisibility: LazyInputDecorationVisibility.always,
-            onStartEditing: () {},
-          ),
-        ),
-      ),
-    );
-
-    expect(
-      tester.getSize(find.byKey(LazyTextFieldKeys.textViewport(cellId))).width,
-      200 - padding.horizontal - (kMinInteractiveDimension * 2),
-    );
-  });
-
-  testWidgets('suffix IconButton tap invokes callback while editing', (
-    tester,
-  ) async {
-    var pressed = 0;
-    final controller = TextEditingController(text: '2026-07-24');
-    final focusNode = FocusNode();
-
-    addTearDown(controller.dispose);
-    addTearDown(focusNode.dispose);
-
-    await tester.pumpWidget(
-      _TestApp(
-        child: SizedBox(
-          width: cellWidth,
-          child: LazyTextField(
-            cellId: cellId,
-            text: controller.text,
-            isEditing: true,
-            controller: controller,
-            focusNode: focusNode,
-            style: textStyle,
-            padding: padding,
-            decoration: LazyInputDecoration(
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.calendar_today, size: 16),
-                onPressed: () => pressed += 1,
-                padding: EdgeInsets.zero,
-              ),
-              suffixIconConstraints: const BoxConstraints(minWidth: 48),
-            ),
-            decorationVisibility: LazyInputDecorationVisibility.editing,
-            onStartEditing: () {},
-          ),
-        ),
-      ),
-    );
-
-    expect(find.byKey(LazyTextFieldKeys.suffixIcon(cellId)), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.calendar_today));
     await tester.pump();
-    expect(pressed, 1);
-  });
 
-  testWidgets('reservedTrailingWidth stacks with suffix icon reservation', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _TestApp(
-        child: SizedBox(
-          width: 200,
-          child: LazyTextField(
-            cellId: cellId,
-            text: 'a',
-            isEditing: false,
-            style: textStyle,
-            padding: padding,
-            reservedTrailingWidth: 12,
-            decoration: const LazyInputDecoration(
-              suffixIcon: Icon(Icons.clear, size: 12),
-              suffixIconConstraints: BoxConstraints(minWidth: 20),
-            ),
-            decorationVisibility: LazyInputDecorationVisibility.always,
-            onStartEditing: () {},
-          ),
-        ),
-      ),
+    final lazyRoot = tester.getRect(find.byKey(LazyTextFieldKeys.root(cellId)));
+    final nativeRoot = tester.getRect(
+      find.byKey(const ValueKey('native-field')),
     );
+    expect(lazyRoot.size, nativeRoot.size);
 
-    expect(
-      tester.getSize(find.byKey(LazyTextFieldKeys.textViewport(cellId))).width,
-      200 - padding.horizontal - 20 - 12,
+    final editables = find
+        .byElementPredicate((element) => element.renderObject is RenderEditable)
+        .evaluate()
+        .map((element) => element.renderObject! as RenderEditable)
+        .toList(growable: false);
+    expect(editables, hasLength(2));
+    final lazyCaret = editables[0].localToGlobal(
+      editables[0].getLocalRectForCaret(const TextPosition(offset: 0)).topLeft,
+    );
+    final nativeCaret = editables[1].localToGlobal(
+      editables[1].getLocalRectForCaret(const TextPosition(offset: 0)).topLeft,
+    );
+    _expectCoordinateClose(
+      lazyCaret.dx,
+      nativeCaret.dx,
+      label: 'native caret x',
+      negativeDirection: 'left',
+      positiveDirection: 'right',
+      tolerance: 0.5,
     );
   });
 
-  testWidgets('always visible decoration shows hint in static mode', (
+  testWidgets('floating label focus transition remains animated', (
     tester,
   ) async {
     final controller = TextEditingController();
     final focusNode = FocusNode();
-
     addTearDown(controller.dispose);
     addTearDown(focusNode.dispose);
 
     await tester.pumpWidget(
       _TestApp(
         child: SizedBox(
-          width: cellWidth,
-          child: LazyTextField(
+          width: 220,
+          child: _LazyCellHarness(
             cellId: cellId,
+            controller: controller,
+            focusNode: focusNode,
             text: '',
-            isEditing: false,
             style: textStyle,
             padding: padding,
-            decoration: const LazyInputDecoration(hintText: 'hint'),
-            decorationVisibility: LazyInputDecorationVisibility.always,
+            maxHeight: null,
+            scrollbarGutter: scrollbarGutter,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              labelText: 'Animated label',
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final label = find.text('Animated label');
+    final positions = <double>[tester.getTopLeft(label).dy];
+
+    await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
+    await tester.pump();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 30));
+      positions.add(tester.getTopLeft(label).dy);
+    }
+
+    expect(positions.toSet().length, greaterThan(2));
+    for (var i = 1; i < positions.length; i++) {
+      expect(
+        positions[i],
+        lessThanOrEqualTo(positions[i - 1] + 0.01),
+        reason: 'floating label should move smoothly upward: $positions',
+      );
+    }
+  });
+
+  testWidgets('native decoration supports fixed custom slots and counter', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: 240,
+          child: LazyTextField(
+            cellId: cellId,
+            text: 'notes',
+            isEditing: false,
+            style: textStyle,
+            decoration: const InputDecoration(
+              filled: true,
+              border: UnderlineInputBorder(),
+              contentPadding: padding,
+              labelText: 'Notes',
+              helperText: 'Helper',
+              counterText: '5/20',
+              prefix: SizedBox(width: 18, child: Text('#')),
+              suffix: SizedBox(width: 18, child: Text('!')),
+            ),
             onStartEditing: () {},
           ),
         ),
       ),
     );
 
-    expect(find.text('hint'), findsNothing);
-    expect(find.byKey(LazyTextFieldKeys.root(cellId)), findsOneWidget);
+    expect(find.text('Notes'), findsOneWidget);
+    expect(find.text('Helper'), findsOneWidget);
+    expect(find.text('5/20'), findsOneWidget);
+    expect(find.text('#'), findsOneWidget);
+    expect(find.text('!'), findsOneWidget);
+  });
+
+  testWidgets('reserved trailing width remains stable across the switch', (
+    tester,
+  ) async {
+    final controller = TextEditingController(text: 'stable text');
+    final focusNode = FocusNode();
+    addTearDown(controller.dispose);
+    addTearDown(focusNode.dispose);
+
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: 200,
+          child: _LazyCellHarness(
+            cellId: cellId,
+            controller: controller,
+            focusNode: focusNode,
+            text: controller.text,
+            style: textStyle,
+            padding: padding,
+            maxHeight: null,
+            scrollbarGutter: scrollbarGutter,
+          ),
+        ),
+      ),
+    );
+
+    final before = tester.getRect(
+      find.byKey(LazyTextFieldKeys.textViewport(cellId)),
+    );
+    await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
+    await tester.pump();
+    final after = tester.getRect(
+      find.byKey(LazyTextFieldKeys.textViewport(cellId)),
+    );
+    _expectRectClose(after, before, tolerance: 0.01);
   });
 
   test('height calculation reserves prefix and suffix widths', () {
@@ -1674,12 +1617,11 @@ void main() {
                 controller: isEditing ? controller : null,
                 focusNode: isEditing ? focusNode : null,
                 style: demoStyle,
-                padding: demoPadding,
-                decoration: const LazyInputDecoration(
+                decoration: const InputDecoration(
+                  contentPadding: demoPadding,
                   prefixIcon: Icon(Icons.subject, size: 16),
                   prefixIconConstraints: BoxConstraints(minWidth: 30),
                 ),
-                decorationVisibility: LazyInputDecorationVisibility.always,
                 maxHeight: isEditing ? editMaxHeight : staticMaxHeight,
                 reservedTrailingWidth: 0,
                 scrollbarGutter: scrollbarGutterForMode,
@@ -1822,12 +1764,11 @@ void main() {
               fontSize: 14,
               height: 1.25,
             ),
-            padding: demoPadding,
-            decoration: const LazyInputDecoration(
+            decoration: const InputDecoration(
+              contentPadding: demoPadding,
               prefixIcon: Icon(Icons.subject, size: 16),
               prefixIconConstraints: BoxConstraints(minWidth: 30),
             ),
-            decorationVisibility: LazyInputDecorationVisibility.always,
             maxHeight: fieldHeight,
             scrollbarGutter: scrollbarGutter,
             onStartEditing: () {},
@@ -1854,12 +1795,11 @@ void main() {
               fontSize: 14,
               height: 1.25,
             ),
-            padding: demoPadding,
-            decoration: const LazyInputDecoration(
+            decoration: const InputDecoration(
+              contentPadding: demoPadding,
               prefixIcon: Icon(Icons.subject, size: 16),
               prefixIconConstraints: BoxConstraints(minWidth: 30),
             ),
-            decorationVisibility: LazyInputDecorationVisibility.always,
             maxHeight: null,
             scrollbarGutter: scrollbarGutter,
             onStartEditing: () {},
@@ -1898,9 +1838,7 @@ void main() {
             focusNode: focusNode,
             isEditing: true,
             style: textStyle,
-            padding: padding,
             decoration: null,
-            decorationVisibility: LazyInputDecorationVisibility.never,
             onStartEditing: () {},
           ),
         ),
@@ -1949,9 +1887,11 @@ void main() {
                 focusNode: focusNode,
                 isEditing: true,
                 style: textStyle,
-                padding: padding,
-                decoration: const LazyInputDecoration(),
-                decorationVisibility: LazyInputDecorationVisibility.always,
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  isCollapsed: true,
+                  contentPadding: padding,
+                ),
                 onStartEditing: () {},
               ),
             ),
@@ -2248,7 +2188,7 @@ class _LazyCellHarness extends StatefulWidget {
   final double scrollbarThickness;
   final AlignmentGeometry scrollbarAlignment;
   final bool initiallyEditing;
-  final LazyInputDecoration? decoration;
+  final InputDecoration? decoration;
   final bool stopEditingOnTapOutside;
 
   @override
@@ -2292,8 +2232,13 @@ class _LazyCellHarnessState extends State<_LazyCellHarness> {
       focusNode: isEditing ? widget.focusNode : null,
       isEditing: isEditing,
       style: widget.style,
-      padding: widget.padding,
-      decoration: widget.decoration,
+      decoration:
+          widget.decoration?.copyWith(contentPadding: widget.padding) ??
+          InputDecoration(
+            border: InputBorder.none,
+            isCollapsed: true,
+            contentPadding: widget.padding,
+          ),
       maxHeight: widget.maxHeight,
       scrollbarGutter: widget.scrollbarGutter,
       scrollbarThickness: widget.scrollbarThickness,
@@ -2603,7 +2548,11 @@ Future<void> _pumpStatefulSelectionCell(
           text: 'abcdef',
           onSave: (_) => true,
           style: helperStyle,
-          padding: helperPadding,
+          decoration: const InputDecoration(
+            border: InputBorder.none,
+            isCollapsed: true,
+            contentPadding: helperPadding,
+          ),
           startEditSelection: startEditSelection,
         ),
       ),

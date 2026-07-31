@@ -60,7 +60,7 @@ class _LazyTextFieldExampleScreenState
           1 => 'Click this lazy field to edit.',
           2 => '',
           3 => 'Narrow columns wrap without row-height surprises.',
-          _ => 'Decoration stays outside the real TextField.',
+          _ => 'Native decoration stays stable while the editor mounts.',
         },
       },
     );
@@ -70,8 +70,6 @@ class _LazyTextFieldExampleScreenState
   TextEditingController? _controller;
   FocusNode? _focusNode;
   final _horizontalScrollController = ScrollController();
-  LazyInputDecorationVisibility _visibility =
-      LazyInputDecorationVisibility.always;
   _HeightMode _heightMode = _HeightMode.onEditFull;
   LazyTextFieldStartEditSelection _startEditSelection =
       LazyTextFieldStartEditSelection.tapPosition;
@@ -108,7 +106,6 @@ class _LazyTextFieldExampleScreenState
       body: Column(
         children: [
           _Toolbar(
-            visibility: _visibility,
             heightMode: _heightMode,
             startEditSelection: _startEditSelection,
             showIcons: _showIcons,
@@ -116,11 +113,6 @@ class _LazyTextFieldExampleScreenState
             bold: _bold,
             italic: _italic,
             activeLabel: activeLabel,
-            onVisibilityChanged: (value) {
-              setState(() {
-                _visibility = value;
-              });
-            },
             onHeightModeChanged: (value) {
               setState(() {
                 _heightMode = value;
@@ -272,9 +264,7 @@ class _LazyTextFieldExampleScreenState
         fontWeight: _bold ? FontWeight.w700 : FontWeight.w400,
         fontStyle: _italic ? FontStyle.italic : FontStyle.normal,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: _decoration(context, column),
-      decorationVisibility: _visibility,
       maxHeight: isFixedHeight ? _fieldHeight : null,
       // Keep text width identical in static and edit. Reserving scrollbar
       // gutter only while maxHeight is set (onEditFull static) widens the
@@ -301,7 +291,7 @@ class _LazyTextFieldExampleScreenState
     return SizedBox(height: _fieldHeight, child: field);
   }
 
-  LazyInputDecoration _decoration(BuildContext context, _DemoColumn column) {
+  InputDecoration _decoration(BuildContext context, _DemoColumn column) {
     final colorScheme = Theme.of(context).colorScheme;
     final borderRadius = BorderRadius.circular(4);
     final normalBorder = OutlineInputBorder(
@@ -313,7 +303,7 @@ class _LazyTextFieldExampleScreenState
       borderSide: BorderSide(color: colorScheme.primary, width: 2),
     );
 
-    return LazyInputDecoration(
+    return InputDecoration(
       filled: true,
       fillColor: colorScheme.surfaceContainerLowest,
       hoverColor: colorScheme.secondaryContainer.withValues(alpha: 0.35),
@@ -323,6 +313,7 @@ class _LazyTextFieldExampleScreenState
       focusedBorder: focusedBorder,
       hintText: 'Click to edit',
       hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       prefixIcon: _showIcons
           ? Icon(column.icon, size: (_fontSize + 2).clamp(14, 22))
           : null,
@@ -390,7 +381,6 @@ class _LazyTextFieldExampleScreenState
 
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
-    required this.visibility,
     required this.heightMode,
     required this.startEditSelection,
     required this.showIcons,
@@ -398,7 +388,6 @@ class _Toolbar extends StatelessWidget {
     required this.bold,
     required this.italic,
     required this.activeLabel,
-    required this.onVisibilityChanged,
     required this.onHeightModeChanged,
     required this.onStartEditSelectionChanged,
     required this.onShowIconsChanged,
@@ -409,7 +398,6 @@ class _Toolbar extends StatelessWidget {
 
   static const _fontSizes = <double>[10, 11, 12, 13, 14, 15, 16];
 
-  final LazyInputDecorationVisibility visibility;
   final _HeightMode heightMode;
   final LazyTextFieldStartEditSelection startEditSelection;
   final bool showIcons;
@@ -417,7 +405,6 @@ class _Toolbar extends StatelessWidget {
   final bool bold;
   final bool italic;
   final String activeLabel;
-  final ValueChanged<LazyInputDecorationVisibility> onVisibilityChanged;
   final ValueChanged<_HeightMode> onHeightModeChanged;
   final ValueChanged<LazyTextFieldStartEditSelection>
   onStartEditSelectionChanged;
@@ -437,32 +424,6 @@ class _Toolbar extends StatelessWidget {
           runSpacing: 12,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            SizedBox(
-              width: 320,
-              child: SegmentedButton<LazyInputDecorationVisibility>(
-                segments: const [
-                  ButtonSegment(
-                    value: LazyInputDecorationVisibility.editing,
-                    icon: Icon(Icons.edit),
-                    label: Text('Edit'),
-                  ),
-                  ButtonSegment(
-                    value: LazyInputDecorationVisibility.always,
-                    icon: Icon(Icons.visibility),
-                    label: Text('Always'),
-                  ),
-                  ButtonSegment(
-                    value: LazyInputDecorationVisibility.never,
-                    icon: Icon(Icons.visibility_off),
-                    label: Text('None'),
-                  ),
-                ],
-                selected: {visibility},
-                onSelectionChanged: (selection) {
-                  onVisibilityChanged(selection.single);
-                },
-              ),
-            ),
             SizedBox(
               width: 392,
               child: SegmentedButton<_HeightMode>(

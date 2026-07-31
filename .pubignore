@@ -1,5 +1,6 @@
 # Agent maintenance docs - not part of the published API surface.
 skills/
+SKILL.md
 
 # Local publish helpers.
 tool/

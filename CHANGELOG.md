@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-07-31
+
+### Added
+
+- Native `InputDecoration` support, including labels, helper/error/counter
+  content, prefix/suffix widgets, density, constraints, and Material themes.
+- A persistent native `InputDecorator` across read-only and editing modes.
+- Per-cell viewport layout caching for repeated intrinsic and layout queries.
+- `textAlignVertical` and `buildCounter` support on `LazyTextField`.
+- Documentation for fixed-slot visibility and overlay fallbacks.
+
+### Changed
+
+- Static and editing modes now share native decoration geometry while the
+  lightweight text child is replaced by the real `TextField`.
+- `minHeight` and `maxHeight` now constrain the text viewport; native
+  supporting content remains outside those bounds.
+- Full decorated height is measured by Flutter layout. Synchronous metrics
+  remain exact for the undecorated text viewport.
+
+### Removed
+
+- `LazyInputDecoration` and `LazyInputDecorationVisibility`.
+- The widget-level `padding` parameter. Use
+  `InputDecoration.contentPadding`.
+
 ## [1.0.3] - 2026-07-28
 
 ### Added
@@ -79,7 +105,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calculation.
 - Visual example app under `example/`.
 
-[Unreleased]: https://github.com/Alexqwesa/lazy_text_field/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/Alexqwesa/lazy_text_field/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/Alexqwesa/lazy_text_field/compare/v1.0.3...v2.0.0
 [1.0.3]: https://github.com/Alexqwesa/lazy_text_field/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/Alexqwesa/lazy_text_field/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Alexqwesa/lazy_text_field/compare/v1.0.0...v1.0.1

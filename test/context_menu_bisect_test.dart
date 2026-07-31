@@ -20,7 +20,6 @@ Future<void> _rightClickCenter(WidgetTester tester) async {
 }
 
 void main() {
-  const padding = EdgeInsets.fromLTRB(3, 4, 5, 6);
   const cellWidth = 120.0;
   const textStyle = TextStyle(fontSize: 10, height: 1);
 
@@ -68,9 +67,7 @@ void main() {
               focusNode: focusNode,
               isEditing: true,
               style: textStyle,
-              padding: padding,
               decoration: null,
-              decorationVisibility: LazyInputDecorationVisibility.never,
               onStartEditing: () {},
             ),
           ),
