@@ -187,6 +187,24 @@ LazyTextField(
 `minHeight` and `maxHeight` constrain the text viewport. Native label,
 helper, error, and counter regions remain outside that viewport.
 
+For uniform table rows, set both bounds to the same finite value:
+
+```dart
+LazyTextField(
+  cellId: row.id,
+  text: row.value,
+  isEditing: isEditing,
+  minHeight: 40,
+  maxHeight: 40,
+  onStartEditing: startEditing,
+)
+```
+
+Equal bounds activate a fixed-height fast path. The viewport width and height
+are derived without laying out the text during sizing, so each row avoids
+content-dependent height measurement. Text layout is still required for
+painting, hit testing, and overflow detection.
+
 ## Height measurement
 
 `LazyTextField.computeHeightForWidth`, `LazyTextFieldLayout`, and
@@ -206,7 +224,8 @@ whose intrinsic sizes are known only during Flutter layout. Use fixed external
 constraints or measure the rendered row when full decorated height is needed.
 
 Each mounted lazy field caches its viewport layout per width and invalidates the
-cache only when text or relevant layout inputs change.
+cache only when text or relevant layout inputs change. Uniform rows with equal
+`minHeight` and `maxHeight` bypass that text measurement entirely during sizing.
 
 ## Migrating from 1.x
 

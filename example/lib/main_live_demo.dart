@@ -265,6 +265,7 @@ class _LazyTextFieldExampleScreenState
         fontStyle: _italic ? FontStyle.italic : FontStyle.normal,
       ),
       decoration: _decoration(context, column),
+      minHeight: _heightMode == _HeightMode.fixed ? _fieldHeight : 0,
       maxHeight: isFixedHeight ? _fieldHeight : null,
       // Keep text width identical in static and edit. Reserving scrollbar
       // gutter only while maxHeight is set (onEditFull static) widens the

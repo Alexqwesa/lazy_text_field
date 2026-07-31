@@ -54,10 +54,13 @@ class StatefulLazyTextField extends StatefulWidget {
   /// Native Material decoration shared by read-only and editing modes.
   final InputDecoration? decoration;
 
-  /// Minimum surface height.
+  /// Minimum text viewport height.
+  ///
+  /// Set this to the same finite value as [maxHeight] to activate fixed-height
+  /// sizing for uniform rows.
   final double minHeight;
 
-  /// Maximum surface height before vertical overflow is clipped.
+  /// Maximum text viewport height before vertical overflow is clipped.
   final double? maxHeight;
 
   /// Width reserved for the package scrollbar in bounded edit mode.

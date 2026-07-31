@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   content, prefix/suffix widgets, density, constraints, and Material themes.
 - A persistent native `InputDecorator` across read-only and editing modes.
 - Per-cell viewport layout caching for repeated intrinsic and layout queries.
+- Fixed-height sizing without text measurement when `minHeight` and
+  `maxHeight` are the same finite value.
 - `textAlignVertical` and `buildCounter` support on `LazyTextField`.
 - Documentation for fixed-slot visibility and overlay fallbacks.
 

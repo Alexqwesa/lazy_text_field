@@ -198,10 +198,15 @@ class LazyTextField extends StatefulWidget {
   /// Use [InputDecoration.contentPadding] to control text padding.
   final InputDecoration? decoration;
 
-  /// Minimum surface height.
+  /// Minimum text viewport height.
+  ///
+  /// Set this to the same finite value as [maxHeight] to activate the
+  /// fixed-height fast path, which skips text measurement during sizing.
   final double minHeight;
 
-  /// Maximum surface height before vertical overflow is clipped.
+  /// Maximum text viewport height before vertical overflow is clipped.
+  ///
+  /// Set this to the same finite value as [minHeight] for uniform table rows.
   final double? maxHeight;
 
   /// Width reserved for the package scrollbar in bounded edit mode.
@@ -893,7 +898,9 @@ class _LazyTextFieldContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final direction = textDirection ?? Directionality.of(context);
     final textScaler = MediaQuery.textScalerOf(context);
-    final gutter = maxHeight == null ? 0.0 : scrollbarGutter;
+    final isHeightBounded = maxHeight != null && maxHeight!.isFinite;
+    final gutter = isHeightBounded ? scrollbarGutter : 0.0;
+    final fixedHeight = _fixedViewportHeight(minHeight, maxHeight);
 
     return _TextViewportSizer(
       text: text,
@@ -909,21 +916,29 @@ class _LazyTextFieldContent extends StatelessWidget {
       editableTextGutter: _editableTextGutter(cursorWidth),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final layout = LazyTextFieldLayout.compute(
-            text: text,
-            width: constraints.maxWidth,
-            padding: EdgeInsets.zero,
-            singleLine: singleLine,
-            style: style,
-            textDirection: direction,
-            textScaler: textScaler,
-            strutStyle: strutStyle,
-            minHeight: minHeight,
-            reservedTrailingWidth: reservedTrailingWidth,
-            maxHeight: maxHeight,
-            scrollbarGutter: gutter,
-            editableTextGutter: _editableTextGutter(cursorWidth),
-          );
+          final layout = fixedHeight == null
+              ? LazyTextFieldLayout.compute(
+                  text: text,
+                  width: constraints.maxWidth,
+                  padding: EdgeInsets.zero,
+                  singleLine: singleLine,
+                  style: style,
+                  textDirection: direction,
+                  textScaler: textScaler,
+                  strutStyle: strutStyle,
+                  minHeight: minHeight,
+                  reservedTrailingWidth: reservedTrailingWidth,
+                  maxHeight: maxHeight,
+                  scrollbarGutter: gutter,
+                  editableTextGutter: _editableTextGutter(cursorWidth),
+                )
+              : _fixedViewportLayout(
+                  width: constraints.maxWidth,
+                  height: fixedHeight,
+                  reservedScrollbarWidth: gutter,
+                  reservedTrailingWidth: reservedTrailingWidth,
+                  editableTextGutter: _editableTextGutter(cursorWidth),
+                );
           final viewport = SizedBox(
             key: LazyTextFieldKeys.textViewport(cellId),
             width: layout.textViewportWidth,
@@ -994,7 +1009,9 @@ class _LazyTextFieldContent extends StatelessWidget {
                               cursorWidth,
                             ),
                             readOnlyAsLink: readOnlyAsLink,
-                            hasVerticalOverflow: layout.hasVerticalOverflow,
+                            hasVerticalOverflow: fixedHeight == null
+                                ? layout.hasVerticalOverflow
+                                : null,
                             overflowExpanded: readOnlyOverflowExpanded,
                             onOverflowToggle: onReadOnlyOverflowToggle,
                             overflowMarkerSize: overflowMarkerSize,
@@ -1020,7 +1037,7 @@ class _LazyTextFieldContent extends StatelessWidget {
                   height: layout.height,
                   child:
                       isEditing &&
-                          layout.hasVerticalOverflow &&
+                          (fixedHeight != null || layout.hasVerticalOverflow) &&
                           scrollController != null
                       ? TextFieldTapRegion(
                           child: _GutterScrollbar(
@@ -1041,6 +1058,37 @@ class _LazyTextFieldContent extends StatelessWidget {
       ),
     );
   }
+}
+
+double? _fixedViewportHeight(double minHeight, double? maxHeight) {
+  if (maxHeight == null || !maxHeight.isFinite || minHeight != maxHeight) {
+    return null;
+  }
+  return maxHeight.ceilToDouble();
+}
+
+LazyTextFieldLayout _fixedViewportLayout({
+  required double width,
+  required double height,
+  required double reservedScrollbarWidth,
+  required double reservedTrailingWidth,
+  required double editableTextGutter,
+}) {
+  final textViewportWidth = math.max<double>(
+    0,
+    width - reservedScrollbarWidth - reservedTrailingWidth,
+  );
+  return LazyTextFieldLayout(
+    height: height,
+    contentHeight: height,
+    textViewportWidth: textViewportWidth,
+    textLayoutWidth: math.max<double>(
+      0,
+      textViewportWidth - editableTextGutter,
+    ),
+    hasVerticalOverflow: false,
+    reservedScrollbarWidth: reservedScrollbarWidth,
+  );
 }
 
 class _TextViewportSizer extends SingleChildRenderObjectWidget {
@@ -1223,21 +1271,30 @@ class _RenderTextViewportSizer extends RenderProxyBox {
     if (_cachedLayoutWidth == width && _cachedLayout != null) {
       return _cachedLayout!;
     }
-    final layout = LazyTextFieldLayout.compute(
-      text: _text,
-      width: math.max(0, width),
-      padding: EdgeInsets.zero,
-      singleLine: _singleLine,
-      style: _style,
-      textDirection: _textDirection,
-      textScaler: _textScaler,
-      strutStyle: _strutStyle,
-      minHeight: _minHeight,
-      reservedTrailingWidth: _reservedTrailingWidth,
-      maxHeight: _maxHeight,
-      scrollbarGutter: _reservedScrollbarWidth,
-      editableTextGutter: _editableTextGutter,
-    );
+    final fixedHeight = _fixedViewportHeight(_minHeight, _maxHeight);
+    final layout = fixedHeight == null
+        ? LazyTextFieldLayout.compute(
+            text: _text,
+            width: math.max(0, width),
+            padding: EdgeInsets.zero,
+            singleLine: _singleLine,
+            style: _style,
+            textDirection: _textDirection,
+            textScaler: _textScaler,
+            strutStyle: _strutStyle,
+            minHeight: _minHeight,
+            reservedTrailingWidth: _reservedTrailingWidth,
+            maxHeight: _maxHeight,
+            scrollbarGutter: _reservedScrollbarWidth,
+            editableTextGutter: _editableTextGutter,
+          )
+        : _fixedViewportLayout(
+            width: math.max(0, width),
+            height: fixedHeight,
+            reservedScrollbarWidth: _reservedScrollbarWidth,
+            reservedTrailingWidth: _reservedTrailingWidth,
+            editableTextGutter: _editableTextGutter,
+          );
     _cachedLayoutWidth = width;
     _cachedLayout = layout;
     return layout;
@@ -1305,9 +1362,9 @@ class _StaticTextBody extends StatelessWidget {
     required this.textDirection,
     required this.editableTextGutter,
     required this.readOnlyAsLink,
-    required this.hasVerticalOverflow,
     required this.overflowExpanded,
     required this.overflowMarkerSize,
+    this.hasVerticalOverflow,
     this.onOverflowToggle,
     this.overflowMarkerColor,
     this.expandedOverflowMarkerColor,
@@ -1322,7 +1379,7 @@ class _StaticTextBody extends StatelessWidget {
   final TextDirection textDirection;
   final double editableTextGutter;
   final bool readOnlyAsLink;
-  final bool hasVerticalOverflow;
+  final bool? hasVerticalOverflow;
   final bool overflowExpanded;
   final VoidCallback? onOverflowToggle;
   final double overflowMarkerSize;
@@ -1369,7 +1426,10 @@ class _StaticTextBody extends StatelessWidget {
           )..layout(maxWidth: textLayoutWidth);
 
           final overflowsWidth = singleLine && layoutPainter.didExceedMaxLines;
-          final overflowsHeight = !singleLine && hasVerticalOverflow;
+          final overflowsHeight =
+              !singleLine &&
+              (hasVerticalOverflow ??
+                  layoutPainter.height.ceilToDouble() > constraints.maxHeight);
           final hasHiddenText = overflowsWidth || overflowsHeight;
 
           if (hasHiddenText || overflowExpanded) {

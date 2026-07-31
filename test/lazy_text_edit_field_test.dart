@@ -148,6 +148,65 @@ void main() {
     expect(layout.hasVerticalOverflow, isFalse);
   });
 
+  testWidgets('equal height bounds skip text measurement during sizing', (
+    tester,
+  ) async {
+    final textScaler = _CountingTextScaler();
+    const text =
+        'A long table value that wraps across several lines at narrow widths.';
+
+    await tester.pumpWidget(
+      _TestApp(
+        child: MediaQuery(
+          data: const MediaQueryData().copyWith(textScaler: textScaler),
+          child: SizedBox(
+            width: 180,
+            child: Column(
+              children: [
+                LazyTextField(
+                  cellId: 'measured-row',
+                  text: text,
+                  isEditing: false,
+                  style: textStyle,
+                  decoration: null,
+                  maxHeight: 40,
+                  onStartEditing: () {},
+                ),
+                LazyTextField(
+                  cellId: 'fixed-row',
+                  text: text,
+                  isEditing: false,
+                  style: textStyle,
+                  decoration: null,
+                  minHeight: 40,
+                  maxHeight: 40,
+                  onStartEditing: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester
+          .getSize(find.byKey(LazyTextFieldKeys.textViewport('fixed-row')))
+          .height,
+      40,
+    );
+
+    _CountingTextScaler.calls = 0;
+    final measuredSizer = _viewportSizerFor(tester, 'measured-row');
+    measuredSizer.getMinIntrinsicHeight(117);
+    expect(_CountingTextScaler.calls, greaterThan(0));
+
+    _CountingTextScaler.calls = 0;
+    final fixedSizer = _viewportSizerFor(tester, 'fixed-row');
+    expect(fixedSizer.getMinIntrinsicHeight(117), 40);
+    expect(_CountingTextScaler.calls, 0);
+  });
+
   testWidgets('empty text still reserves one editable line', (tester) async {
     late BuildContext capturedContext;
 
@@ -2281,6 +2340,31 @@ class _TestApp extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CountingTextScaler extends TextScaler {
+  static int calls = 0;
+
+  @override
+  double scale(double fontSize) {
+    calls++;
+    return fontSize;
+  }
+
+  @override
+  double get textScaleFactor => 1;
+}
+
+RenderBox _viewportSizerFor(WidgetTester tester, String cellId) {
+  RenderObject? current = tester.renderObject(
+    find.byKey(LazyTextFieldKeys.textViewport(cellId)),
+  );
+  while (current != null &&
+      current.runtimeType.toString() != '_RenderTextViewportSizer') {
+    current = current.parent;
+  }
+  expect(current, isNotNull);
+  return current! as RenderBox;
 }
 
 double _paintedTextHeight({
