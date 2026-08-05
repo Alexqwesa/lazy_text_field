@@ -410,6 +410,294 @@ void main() {
     expect(find.byType(EditableText), findsOneWidget);
   });
 
+  testWidgets('editor forwards TextField configuration', (tester) async {
+    final controller = TextEditingController(text: 'configured');
+    final focusNode = FocusNode();
+    final scrollController = ScrollController();
+    final undoController = UndoHistoryController();
+    final statesController = WidgetStatesController();
+    final inputFormatters = <TextInputFormatter>[
+      FilteringTextInputFormatter.digitsOnly,
+    ];
+    const strutStyle = StrutStyle(fontSize: 13, height: 1.4);
+    const scrollPhysics = BouncingScrollPhysics();
+    const autofillHints = <String>[AutofillHints.email];
+    const cursorRadius = Radius.circular(4);
+    const cursorColor = Color(0xff123456);
+    void onChanged(String value) {}
+    void onSubmitted(String value) {}
+    void onEditingComplete() {}
+    void onTapOutside(PointerDownEvent event) {}
+    Widget contextMenuBuilder(
+      BuildContext context,
+      EditableTextState editableTextState,
+    ) => const SizedBox();
+
+    addTearDown(controller.dispose);
+    addTearDown(focusNode.dispose);
+    addTearDown(scrollController.dispose);
+    addTearDown(undoController.dispose);
+    addTearDown(statesController.dispose);
+
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: 220,
+          child: LazyTextField(
+            cellId: cellId,
+            text: controller.text,
+            isEditing: true,
+            controller: controller,
+            focusNode: focusNode,
+            singleLine: false,
+            style: textStyle,
+            strutStyle: strutStyle,
+            textAlign: TextAlign.end,
+            textAlignVertical: TextAlignVertical.bottom,
+            textDirection: TextDirection.rtl,
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+            onStartEditing: () {},
+            onChanged: onChanged,
+            onSubmitted: onSubmitted,
+            onEditingComplete: onEditingComplete,
+            onTapOutside: onTapOutside,
+            textInputAction: TextInputAction.search,
+            keyboardType: TextInputType.emailAddress,
+            inputFormatters: inputFormatters,
+            minLines: 2,
+            maxLines: 4,
+            expands: false,
+            scrollController: scrollController,
+            scrollPhysics: scrollPhysics,
+            enabled: true,
+            readOnly: true,
+            autofocus: false,
+            showCursor: false,
+            enableInteractiveSelection: false,
+            selectionControls: materialTextSelectionControls,
+            cursorColor: cursorColor,
+            cursorWidth: 3,
+            cursorHeight: 17,
+            cursorRadius: cursorRadius,
+            maxLength: 30,
+            maxLengthEnforcement: MaxLengthEnforcement.none,
+            undoController: undoController,
+            statesController: statesController,
+            autofillHints: autofillHints,
+            contextMenuBuilder: contextMenuBuilder,
+            mouseCursor: SystemMouseCursors.forbidden,
+          ),
+        ),
+      ),
+    );
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller, same(controller));
+    expect(field.focusNode, same(focusNode));
+    expect(field.decoration, isNull);
+    expect(field.style?.fontFamily, textStyle.fontFamily);
+    expect(field.style?.fontSize, textStyle.fontSize);
+    expect(field.strutStyle, strutStyle);
+    expect(field.textAlign, TextAlign.end);
+    expect(field.textAlignVertical, TextAlignVertical.bottom);
+    expect(field.textDirection, TextDirection.rtl);
+    expect(field.onChanged, same(onChanged));
+    expect(field.onSubmitted, same(onSubmitted));
+    expect(field.onEditingComplete, same(onEditingComplete));
+    expect(field.onTapOutside, same(onTapOutside));
+    expect(field.textInputAction, TextInputAction.search);
+    expect(field.keyboardType, TextInputType.emailAddress);
+    expect(field.inputFormatters, same(inputFormatters));
+    expect(field.minLines, 2);
+    expect(field.maxLines, 4);
+    expect(field.expands, isFalse);
+    expect(field.scrollController, same(scrollController));
+    expect(field.scrollPhysics, same(scrollPhysics));
+    expect(field.enabled, isTrue);
+    expect(field.readOnly, isTrue);
+    expect(field.autofocus, isFalse);
+    expect(field.showCursor, isFalse);
+    expect(field.enableInteractiveSelection, isFalse);
+    expect(field.selectionControls, same(materialTextSelectionControls));
+    expect(field.cursorColor, cursorColor);
+    expect(field.cursorWidth, 3);
+    expect(field.cursorHeight, 17);
+    expect(field.cursorRadius, cursorRadius);
+    expect(field.maxLength, 30);
+    expect(field.maxLengthEnforcement, MaxLengthEnforcement.none);
+    expect(field.undoController, same(undoController));
+    expect(field.statesController, same(statesController));
+    expect(field.autofillHints, same(autofillHints));
+    expect(field.contextMenuBuilder, same(contextMenuBuilder));
+    expect(field.mouseCursor, SystemMouseCursors.forbidden);
+
+    final decorator = tester.widget<InputDecorator>(
+      find.byType(InputDecorator),
+    );
+    expect(decorator.textAlign, TextAlign.end);
+    expect(decorator.textAlignVertical, TextAlignVertical.bottom);
+    expect(decorator.expands, isFalse);
+  });
+
+  testWidgets('editor callbacks receive formatted input and actions', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    final focusNode = FocusNode();
+    var changedValue = '';
+    var submittedValue = '';
+    var editingCompleteCalls = 0;
+    var tapOutsideCalls = 0;
+    addTearDown(controller.dispose);
+    addTearDown(focusNode.dispose);
+
+    await tester.pumpWidget(
+      _TestApp(
+        child: Column(
+          children: [
+            SizedBox(
+              width: 220,
+              child: LazyTextField(
+                cellId: cellId,
+                text: '',
+                isEditing: true,
+                controller: controller,
+                focusNode: focusNode,
+                decoration: const InputDecoration(),
+                onStartEditing: () {},
+                inputFormatters: <TextInputFormatter>[
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
+                textInputAction: TextInputAction.done,
+                onChanged: (value) => changedValue = value,
+                onSubmitted: (value) => submittedValue = value,
+                onEditingComplete: () => editingCompleteCalls++,
+                onTapOutside: (_) => tapOutsideCalls++,
+              ),
+            ),
+            GestureDetector(
+              key: const ValueKey('callback-outside-target'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () {},
+              child: const SizedBox(width: 40, height: 40),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await tester.showKeyboard(find.byType(TextField));
+    tester.testTextInput.enterText('a1b2c3');
+    await tester.pump();
+
+    expect(controller.text, '123');
+    expect(changedValue, '123');
+
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+
+    expect(editingCompleteCalls, 1);
+    expect(submittedValue, '123');
+
+    await tester.tap(find.byKey(const ValueKey('callback-outside-target')));
+    await tester.pump();
+    expect(tapOutsideCalls, 1);
+  });
+
+  testWidgets('buildCounter receives grapheme length and focus state', (
+    tester,
+  ) async {
+    final controller = TextEditingController(text: 'a😀');
+    final focusNode = FocusNode();
+    var observedCurrentLength = -1;
+    int? receivedMaxLength;
+    var observedIsFocused = false;
+    addTearDown(controller.dispose);
+    addTearDown(focusNode.dispose);
+
+    await tester.pumpWidget(
+      _TestApp(
+        child: SizedBox(
+          width: 220,
+          child: LazyTextField(
+            cellId: cellId,
+            text: controller.text,
+            isEditing: true,
+            controller: controller,
+            focusNode: focusNode,
+            autofocus: false,
+            textAlignVertical: TextAlignVertical.center,
+            maxLength: 8,
+            buildCounter:
+                (
+                  context, {
+                  required currentLength,
+                  required maxLength,
+                  required isFocused,
+                }) {
+                  observedCurrentLength = currentLength;
+                  receivedMaxLength = maxLength;
+                  observedIsFocused = isFocused;
+                  return Text('$currentLength/$maxLength/$isFocused');
+                },
+            onStartEditing: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(observedCurrentLength, 2);
+    expect(receivedMaxLength, 8);
+    expect(observedIsFocused, isFalse);
+    expect(find.text('2/8/false'), findsOneWidget);
+    expect(
+      tester
+          .widget<InputDecorator>(find.byType(InputDecorator))
+          .textAlignVertical,
+      TextAlignVertical.center,
+    );
+
+    focusNode.requestFocus();
+    await tester.pump();
+
+    expect(observedCurrentLength, 2);
+    expect(receivedMaxLength, 8);
+    expect(observedIsFocused, isTrue);
+    expect(find.text('2/8/true'), findsOneWidget);
+  });
+
+  testWidgets('wrapper fields forward textAlignVertical', (tester) async {
+    await tester.pumpWidget(
+      _TestApp(
+        child: LazyTextFieldControllerScope(
+          child: Column(
+            children: [
+              StatefulLazyTextField(
+                cellId: 'stateful',
+                text: 'Stateful',
+                textAlignVertical: TextAlignVertical.top,
+                onSave: (_) => true,
+              ),
+              ScopedLazyTextField(
+                cellId: 'scoped',
+                text: 'Scoped',
+                textAlignVertical: TextAlignVertical.bottom,
+                onSave: (_) => true,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final decorators = tester
+        .widgetList<InputDecorator>(find.byType(InputDecorator))
+        .toList(growable: false);
+    expect(decorators, hasLength(2));
+    expect(decorators[0].textAlignVertical, TextAlignVertical.top);
+    expect(decorators[1].textAlignVertical, TextAlignVertical.bottom);
+  });
+
   testWidgets('start edit selection policy places cursor at beginning', (
     tester,
   ) async {
@@ -1278,6 +1566,206 @@ void main() {
       );
       expect(find.byType(TextField), findsOneWidget);
       expect(find.byType(EditableText), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'stable dynamic decoration keeps text pixels aligned through animation',
+    (tester) async {
+      const dynamicText =
+          'alpha beta gamma delta epsilon zeta eta theta iota kappa';
+      final controller = TextEditingController(text: dynamicText);
+      final focusNode = FocusNode();
+      addTearDown(controller.dispose);
+      addTearDown(focusNode.dispose);
+
+      InputDecoration decorationFor(bool isEditing) {
+        final color = isEditing ? Colors.blue : Colors.grey;
+        final border = OutlineInputBorder(
+          borderSide: BorderSide(color: color, width: 2),
+        );
+        return InputDecoration(
+          filled: true,
+          fillColor: isEditing ? Colors.blue.shade50 : Colors.grey.shade100,
+          border: border,
+          enabledBorder: border,
+          focusedBorder: border,
+          labelText: 'Value',
+          prefixIcon: SizedBox(
+            width: 32,
+            height: 32,
+            child: AnimatedOpacity(
+              opacity: isEditing ? 1 : 0.25,
+              duration: const Duration(milliseconds: 200),
+              child: const Icon(Icons.search, size: 16),
+            ),
+          ),
+          prefixIconConstraints: const BoxConstraints.tightFor(
+            width: 32,
+            height: 32,
+          ),
+          suffixIcon: SizedBox(
+            width: 32,
+            height: 32,
+            child: AnimatedOpacity(
+              opacity: isEditing ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: const Icon(Icons.check, size: 16),
+            ),
+          ),
+          suffixIconConstraints: const BoxConstraints.tightFor(
+            width: 32,
+            height: 32,
+          ),
+          helper: SizedBox(
+            height: 14,
+            child: AnimatedOpacity(
+              opacity: isEditing ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: const Text('Editing'),
+            ),
+          ),
+        );
+      }
+
+      await tester.pumpWidget(
+        _TestApp(
+          child: _BaselineProbe(
+            key: const ValueKey('dynamic-baseline-probe'),
+            child: SizedBox(
+              width: 220,
+              child: _LazyCellHarness(
+                cellId: cellId,
+                controller: controller,
+                focusNode: focusNode,
+                text: controller.text,
+                style: textStyle,
+                padding: padding,
+                maxHeight: null,
+                scrollbarGutter: scrollbarGutter,
+                decorationBuilder: decorationFor,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final decoratorFinder = find.byType(InputDecorator);
+      final decoratorState = tester.state(decoratorFinder);
+      final rootFinder = find.byKey(LazyTextFieldKeys.root(cellId));
+      final viewportFinder = find.byKey(LazyTextFieldKeys.textViewport(cellId));
+      final staticRoot = tester.getRect(rootFinder);
+      final staticViewport = tester.getRect(viewportFinder);
+      final staticBaseline = _probedGlobalBaseline(tester);
+      final staticLineBoxes = _staticSelectionLineRects(
+        text: dynamicText,
+        style: textStyle,
+        maxWidth: staticViewport.width,
+        origin: staticViewport.topLeft,
+      );
+      expect(staticLineBoxes.length, greaterThan(1));
+
+      await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
+      await tester.pump();
+
+      for (var frame = 0; frame < 6; frame++) {
+        if (frame > 0) {
+          await tester.pump(const Duration(milliseconds: 40));
+        }
+
+        expect(
+          identical(tester.state(decoratorFinder), decoratorState),
+          isTrue,
+        );
+        _expectRectClose(
+          tester.getRect(rootFinder),
+          staticRoot,
+          label: 'dynamic decoration root frame $frame',
+          tolerance: 0.01,
+        );
+        _expectRectClose(
+          tester.getRect(viewportFinder),
+          staticViewport,
+          label: 'dynamic decoration viewport frame $frame',
+          tolerance: 0.01,
+        );
+        expect(
+          _probedGlobalBaseline(tester),
+          closeTo(staticBaseline, 0.01),
+          reason: 'dynamic decoration baseline moved on frame $frame',
+        );
+
+        final renderEditable = tester.renderObject<RenderEditable>(
+          _findRenderEditableInside(cellId),
+        );
+        final editLineBoxes = _editSelectionLineRects(
+          renderEditable,
+          selection: const TextSelection(
+            baseOffset: 0,
+            extentOffset: dynamicText.length,
+          ),
+        );
+        _expectLineBoxListsClose(
+          editLineBoxes,
+          staticLineBoxes,
+          label: 'dynamic decoration glyphs frame $frame',
+          tolerance: 0.01,
+        );
+      }
+    },
+  );
+
+  testWidgets(
+    'size-changing dynamic decoration is outside pixel-stability contract',
+    (tester) async {
+      final controller = TextEditingController(text: 'alpha beta gamma');
+      final focusNode = FocusNode();
+      addTearDown(controller.dispose);
+      addTearDown(focusNode.dispose);
+
+      InputDecoration decorationFor(bool isEditing) {
+        return InputDecoration(
+          border: const OutlineInputBorder(),
+          suffixIcon: isEditing
+              ? const SizedBox(width: 40, child: Icon(Icons.check, size: 16))
+              : null,
+          suffixIconConstraints: isEditing
+              ? const BoxConstraints.tightFor(width: 40, height: 32)
+              : null,
+        );
+      }
+
+      await tester.pumpWidget(
+        _TestApp(
+          child: SizedBox(
+            width: 220,
+            child: _LazyCellHarness(
+              cellId: cellId,
+              controller: controller,
+              focusNode: focusNode,
+              text: controller.text,
+              style: textStyle,
+              padding: padding,
+              maxHeight: null,
+              scrollbarGutter: scrollbarGutter,
+              decorationBuilder: decorationFor,
+            ),
+          ),
+        ),
+      );
+
+      final decoratorFinder = find.byType(InputDecorator);
+      final decoratorState = tester.state(decoratorFinder);
+      final viewportFinder = find.byKey(LazyTextFieldKeys.textViewport(cellId));
+      final staticViewport = tester.getRect(viewportFinder);
+
+      await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface(cellId)));
+      await tester.pump();
+
+      final editViewport = tester.getRect(viewportFinder);
+      expect(identical(tester.state(decoratorFinder), decoratorState), isTrue);
+      expect(editViewport.width, lessThan(staticViewport.width));
+      expect(editViewport.right, lessThan(staticViewport.right));
     },
   );
 
@@ -2233,8 +2721,9 @@ class _LazyCellHarness extends StatefulWidget {
     this.scrollbarAlignment = LazyTextField.defaultScrollbarAlignment,
     this.initiallyEditing = false,
     this.decoration,
+    this.decorationBuilder,
     this.stopEditingOnTapOutside = false,
-  });
+  }) : assert(decoration == null || decorationBuilder == null);
 
   final String cellId;
   final TextEditingController controller;
@@ -2248,6 +2737,7 @@ class _LazyCellHarness extends StatefulWidget {
   final AlignmentGeometry scrollbarAlignment;
   final bool initiallyEditing;
   final InputDecoration? decoration;
+  final InputDecoration Function(bool isEditing)? decorationBuilder;
   final bool stopEditingOnTapOutside;
 
   @override
@@ -2284,6 +2774,8 @@ class _LazyCellHarnessState extends State<_LazyCellHarness> {
 
   @override
   Widget build(BuildContext context) {
+    final decoration =
+        widget.decorationBuilder?.call(isEditing) ?? widget.decoration;
     return LazyTextField(
       cellId: widget.cellId,
       text: widget.controller.text,
@@ -2292,7 +2784,7 @@ class _LazyCellHarnessState extends State<_LazyCellHarness> {
       isEditing: isEditing,
       style: widget.style,
       decoration:
-          widget.decoration?.copyWith(contentPadding: widget.padding) ??
+          decoration?.copyWith(contentPadding: widget.padding) ??
           InputDecoration(
             border: InputBorder.none,
             isCollapsed: true,
@@ -2365,6 +2857,33 @@ RenderBox _viewportSizerFor(WidgetTester tester, String cellId) {
   }
   expect(current, isNotNull);
   return current! as RenderBox;
+}
+
+double _probedGlobalBaseline(WidgetTester tester) {
+  final renderBox = tester.renderObject<_RenderBaselineProbe>(
+    find.byKey(const ValueKey('dynamic-baseline-probe')),
+  );
+  final baseline = renderBox.baseline;
+  expect(baseline, isNotNull);
+  return renderBox.localToGlobal(Offset(0, baseline!)).dy;
+}
+
+class _BaselineProbe extends SingleChildRenderObjectWidget {
+  const _BaselineProbe({required super.child, super.key});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderBaselineProbe();
+}
+
+class _RenderBaselineProbe extends RenderProxyBox {
+  double? baseline;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    baseline = child?.getDistanceToBaseline(TextBaseline.alphabetic);
+  }
 }
 
 double _paintedTextHeight({
