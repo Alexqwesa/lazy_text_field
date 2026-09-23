@@ -63,6 +63,10 @@ class LazyTextFieldEditController extends ChangeNotifier {
     notifyListeners();
 
     SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!identical(_controllers[cellId], controller) ||
+          !identical(_focusNodes[cellId], focusNode)) {
+        return;
+      }
       if (!focusNode.canRequestFocus) return;
       focusNode.requestFocus();
       controller.selection = _startEditSelectionFor(
@@ -121,7 +125,12 @@ class LazyTextFieldEditController extends ChangeNotifier {
       textOffset: textOffset,
     );
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (focusNode == null || !focusNode.canRequestFocus) return;
+      if (!identical(_controllers[cellId], controller) ||
+          !identical(_focusNodes[cellId], focusNode) ||
+          focusNode == null ||
+          !focusNode.canRequestFocus) {
+        return;
+      }
       focusNode.requestFocus();
     });
   }
