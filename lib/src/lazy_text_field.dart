@@ -1325,14 +1325,18 @@ class _RenderTextViewportSizer extends RenderProxyBox {
   void performLayout() {
     final width = _widthFor(constraints);
     size = constraints.constrain(Size(width, _layoutFor(width).height));
-    child?.layout(BoxConstraints.tight(size));
+    // InputDecorator reads this child's size/baseline during its own layout.
+    child?.layout(BoxConstraints.tight(size), parentUsesSize: true);
   }
 
   @override
   double? computeDistanceToActualBaseline(TextBaseline baseline) {
+    // Baseline can be queried during the parent's performLayout before this
+    // box's size is readable — derive width from constraints instead.
+    final width = _widthFor(constraints);
     final textWidth = math.max<double>(
       0,
-      size.width -
+      width -
           _reservedScrollbarWidth -
           _reservedTrailingWidth -
           _editableTextGutter,
