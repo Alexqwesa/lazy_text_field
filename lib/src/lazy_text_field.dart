@@ -2037,7 +2037,7 @@ InputDecoration _withoutErrorSlot(InputDecoration decoration) {
     hintMaxLines: decoration.hintMaxLines,
     hintFadeDuration: decoration.hintFadeDuration,
     maintainHintSize: decoration.maintainHintSize,
-    maintainLabelSize: decoration.maintainLabelSize,
+    // Omit maintainLabelSize: added after Flutter 3.38.1 (package minimum).
     errorStyle: decoration.errorStyle,
     errorMaxLines: decoration.errorMaxLines,
     floatingLabelBehavior: decoration.floatingLabelBehavior,
