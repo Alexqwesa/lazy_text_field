@@ -403,11 +403,24 @@ class LazyTextField extends StatefulWidget {
     );
   }
 
-  /// Returns the [LazyTextField] surface height for a given [width].
+  /// Returns the undecorated text-viewport height for a given [width].
+  ///
+  /// This measures only the text surface for [padding], style, and overflow
+  /// gutters. It does **not** include [InputDecoration] chrome such as labels,
+  /// helpers, counters, icons, or borders.
+  ///
+  /// It also does **not** infer [InputDecoration.contentPadding] from [context]
+  /// or [ThemeData.inputDecorationTheme]: effective Material padding depends on
+  /// dense/collapsed/border/filled state inside [InputDecorator], and this API
+  /// takes no decoration. Pass [padding] explicitly (typically the same value
+  /// as your [InputDecoration.contentPadding]). Even then, other decorator
+  /// slots can still add height on top of this value.
   ///
   /// Pass [context] to inherit [DefaultTextStyle], text direction, and text
   /// scaler from the widget tree. Omit [context] when measuring outside build,
   /// for example while sizing data-table rows.
+  ///
+  /// See also: [LazyTextFieldMetrics.computeHeightForWidth].
   static double computeHeightForWidth({
     BuildContext? context,
     required String text,
