@@ -29,6 +29,11 @@ class ScopedLazyTextField extends StatefulWidget {
     this.startEditSelection = LazyTextFieldStartEditSelection.end,
     this.readOnlyAsLink = false,
     this.allowMultipleActiveEdits = false,
+    this.inputFormatters,
+    this.onChanged,
+    this.keyboardType,
+    this.textInputAction,
+    this.maxLength,
     this.onWillStartEditing,
     this.onCancel,
     this.onSaved,
@@ -40,7 +45,8 @@ class ScopedLazyTextField extends StatefulWidget {
   /// Current read-only text value.
   final String text;
 
-  /// Called when editing should save.
+  /// Primary commit path: return true to accept and exit edit mode, or false
+  /// to keep editing (e.g. validation failed).
   final LazyTextFieldSave onSave;
 
   /// Whether the field should lay out and edit as one line.
@@ -84,6 +90,23 @@ class ScopedLazyTextField extends StatefulWidget {
 
   /// Whether this field can edit while other scoped fields remain active.
   final bool allowMultipleActiveEdits;
+
+  /// Passed through to the internal [TextField.inputFormatters].
+  final List<TextInputFormatter>? inputFormatters;
+
+  /// Live edit callback; does not commit.
+  ///
+  /// Use [onSave] to accept or reject the value when editing ends.
+  final ValueChanged<String>? onChanged;
+
+  /// Passed through to the internal [TextField.keyboardType].
+  final TextInputType? keyboardType;
+
+  /// Passed through to the internal [TextField.textInputAction].
+  final TextInputAction? textInputAction;
+
+  /// Passed through to the internal [TextField.maxLength].
+  final int? maxLength;
 
   /// Optional guard called before edit resources are created.
   final FutureOr<bool> Function()? onWillStartEditing;
@@ -159,6 +182,11 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       scrollbarThickness: widget.scrollbarThickness,
       scrollbarAlignment: widget.scrollbarAlignment,
       readOnlyAsLink: widget.readOnlyAsLink,
+      inputFormatters: widget.inputFormatters,
+      onChanged: widget.onChanged,
+      keyboardType: widget.keyboardType,
+      textInputAction: widget.textInputAction,
+      maxLength: widget.maxLength,
       onStartEditing: () => unawaited(_startEditing(editController)),
       onStartEditingWithDetails: (details) => unawaited(
         _startEditing(editController, textOffset: details.textOffset),

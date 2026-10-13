@@ -751,6 +751,106 @@ void main() {
     expect(decorators[1].textAlignVertical, TextAlignVertical.bottom);
   });
 
+  testWidgets(
+    'wrappers forward formatters, onChanged, keyboard, and maxLength',
+    (tester) async {
+      final digitsOnly = FilteringTextInputFormatter.digitsOnly;
+      final statefulChanged = <String>[];
+      final scopedChanged = <String>[];
+
+      await tester.pumpWidget(
+        _TestApp(
+          child: LazyTextFieldControllerScope(
+            child: Column(
+              children: [
+                SizedBox(
+                  width: 160,
+                  child: StatefulLazyTextField(
+                    cellId: 'stateful-input',
+                    text: '12',
+                    singleLine: true,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.done,
+                    maxLength: 4,
+                    inputFormatters: [digitsOnly],
+                    onChanged: statefulChanged.add,
+                    onSave: (_) => true,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isCollapsed: true,
+                      contentPadding: EdgeInsets.all(4),
+                      counterText: '',
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 160,
+                  child: ScopedLazyTextField(
+                    cellId: 'scoped-input',
+                    text: '34',
+                    singleLine: true,
+                    keyboardType: TextInputType.phone,
+                    textInputAction: TextInputAction.next,
+                    maxLength: 6,
+                    inputFormatters: [digitsOnly],
+                    onChanged: scopedChanged.add,
+                    onSave: (_) => true,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isCollapsed: true,
+                      contentPadding: EdgeInsets.all(4),
+                      counterText: '',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(LazyTextFieldKeys.staticSurface('stateful-input')),
+      );
+      await tester.pump();
+
+      final statefulField = tester.widget<TextField>(find.byType(TextField));
+      expect(statefulField.keyboardType, TextInputType.number);
+      expect(statefulField.textInputAction, TextInputAction.done);
+      expect(statefulField.maxLength, 4);
+      expect(statefulField.inputFormatters, contains(digitsOnly));
+
+      await tester.enterText(find.byType(EditableText), '12a3');
+      await tester.pump();
+      expect(
+        tester.widget<EditableText>(find.byType(EditableText)).controller.text,
+        '123',
+      );
+      expect(statefulChanged, isNotEmpty);
+      expect(statefulChanged.last, '123');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+
+      await tester.tap(
+        find.byKey(LazyTextFieldKeys.staticSurface('scoped-input')),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final scopedField = tester.widget<TextField>(find.byType(TextField));
+      expect(scopedField.keyboardType, TextInputType.phone);
+      expect(scopedField.textInputAction, TextInputAction.next);
+      expect(scopedField.maxLength, 6);
+      expect(scopedField.inputFormatters, contains(digitsOnly));
+
+      await tester.enterText(find.byType(EditableText), '9b8');
+      await tester.pump();
+      expect(scopedChanged, isNotEmpty);
+      expect(scopedChanged.last, '98');
+    },
+  );
+
   testWidgets('start edit selection policy places cursor at beginning', (
     tester,
   ) async {

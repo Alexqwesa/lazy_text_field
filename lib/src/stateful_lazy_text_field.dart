@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lazy_text_field/src/lazy_text_field.dart';
 
-/// Saves an edited lazy text field value.
+/// Commits an edited lazy text field value.
 ///
-/// Return true to accept the value and exit edit mode, or false to keep editing.
+/// This is the primary validation hook on save. Return true to accept the
+/// value and exit edit mode, or false to keep editing.
 typedef LazyTextFieldSave = FutureOr<bool> Function(String value);
 
 /// Self-contained [LazyTextField] wrapper that owns its edit lifecycle.
@@ -28,6 +29,11 @@ class StatefulLazyTextField extends StatefulWidget {
     this.scrollbarAlignment = LazyTextField.defaultScrollbarAlignment,
     this.startEditSelection = LazyTextFieldStartEditSelection.end,
     this.readOnlyAsLink = false,
+    this.inputFormatters,
+    this.onChanged,
+    this.keyboardType,
+    this.textInputAction,
+    this.maxLength,
     this.onWillStartEditing,
     this.onCancel,
     this.onSaved,
@@ -39,7 +45,8 @@ class StatefulLazyTextField extends StatefulWidget {
   /// Current read-only text value.
   final String text;
 
-  /// Called when editing should save.
+  /// Primary commit path: return true to accept and exit edit mode, or false
+  /// to keep editing (e.g. validation failed).
   final LazyTextFieldSave onSave;
 
   /// Whether the field should lay out and edit as one line.
@@ -80,6 +87,23 @@ class StatefulLazyTextField extends StatefulWidget {
 
   /// Whether read-only text should use link-like cursor/gesture behavior.
   final bool readOnlyAsLink;
+
+  /// Passed through to the internal [TextField.inputFormatters].
+  final List<TextInputFormatter>? inputFormatters;
+
+  /// Live edit callback; does not commit.
+  ///
+  /// Use [onSave] to accept or reject the value when editing ends.
+  final ValueChanged<String>? onChanged;
+
+  /// Passed through to the internal [TextField.keyboardType].
+  final TextInputType? keyboardType;
+
+  /// Passed through to the internal [TextField.textInputAction].
+  final TextInputAction? textInputAction;
+
+  /// Passed through to the internal [TextField.maxLength].
+  final int? maxLength;
 
   /// Optional guard called before edit resources are created.
   final FutureOr<bool> Function()? onWillStartEditing;
@@ -141,6 +165,11 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
       scrollbarThickness: widget.scrollbarThickness,
       scrollbarAlignment: widget.scrollbarAlignment,
       readOnlyAsLink: widget.readOnlyAsLink,
+      inputFormatters: widget.inputFormatters,
+      onChanged: widget.onChanged,
+      keyboardType: widget.keyboardType,
+      textInputAction: widget.textInputAction,
+      maxLength: widget.maxLength,
       onStartEditing: () => unawaited(_startEditing()),
       onStartEditingWithDetails: (details) =>
           unawaited(_startEditing(textOffset: details.textOffset)),
