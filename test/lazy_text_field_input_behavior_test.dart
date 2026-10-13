@@ -160,60 +160,22 @@ void main() {
     testWidgets(
       'tapPosition places caret under right-aligned text',
       (tester) async {
-        late LazyTextFieldStartEditDetails details;
-        var editing = false;
-        const text = 'abcdefghij';
-        final controller = TextEditingController(text: text);
-        final focusNode = FocusNode();
-        addTearDown(controller.dispose);
-        addTearDown(focusNode.dispose);
-
-        await tester.pumpWidget(
-          _InputApp(
-            child: SizedBox(
-              width: 120,
-              child: StatefulBuilder(
-                builder: (context, setState) {
-                  return LazyTextField(
-                    cellId: 'align',
-                    text: text,
-                    isEditing: editing,
-                    controller: editing ? controller : null,
-                    focusNode: editing ? focusNode : null,
-                    style: style,
-                    textAlign: TextAlign.end,
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      isCollapsed: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    onStartEditingWithDetails: (value) {
-                      details = value;
-                      controller.selection = TextSelection.collapsed(
-                        offset: value.textOffset,
-                      );
-                      setState(() => editing = true);
-                    },
-                    onStartEditing: () {},
-                  );
-                },
-              ),
-            ),
-          ),
+        await _expectTapPositionForAlignedText(
+          tester,
+          textAlign: TextAlign.end,
+          targetOffset: 3,
         );
+      },
+    );
 
-        final viewport = tester.getRect(
-          find.byKey(LazyTextFieldKeys.textViewport('align')),
+    testWidgets(
+      'tapPosition places caret under centered text',
+      (tester) async {
+        await _expectTapPositionForAlignedText(
+          tester,
+          textAlign: TextAlign.center,
+          targetOffset: 6,
         );
-        // Tap near the start of the right-aligned run (left side of glyphs).
-        await tester.tapAt(Offset(viewport.left + 8, viewport.center.dy));
-        await tester.pump();
-        await tester.pump();
-
-        expect(editing, isTrue);
-        expect(details.textOffset, lessThan(text.length));
-        expect(details.textOffset, greaterThan(0));
-        expect(controller.selection.baseOffset, details.textOffset);
       },
     );
 
@@ -337,6 +299,104 @@ void main() {
       },
     );
   });
+}
+
+/// Taps the visual glyph at [targetOffset] for [textAlign] and expects
+/// [LazyTextFieldStartEditDetails.textOffset] (and the applied caret) to match.
+Future<void> _expectTapPositionForAlignedText(
+  WidgetTester tester, {
+  required TextAlign textAlign,
+  required int targetOffset,
+}) async {
+  const text = 'abcdefghij';
+  const cellId = 'align';
+  const cursorWidth = 2.0;
+  const fieldWidth = 160.0;
+  final style = const TextStyle(
+    fontFamily: 'Ahem',
+    fontSize: 10,
+    height: 1,
+    letterSpacing: 0,
+  );
+
+  late LazyTextFieldStartEditDetails details;
+  var editing = false;
+  final controller = TextEditingController(text: text);
+  final focusNode = FocusNode();
+  addTearDown(controller.dispose);
+  addTearDown(focusNode.dispose);
+
+  await tester.pumpWidget(
+    _InputApp(
+      child: SizedBox(
+        width: fieldWidth,
+        child: StatefulBuilder(
+          builder: (context, setState) {
+            return LazyTextField(
+              cellId: cellId,
+              text: text,
+              isEditing: editing,
+              controller: editing ? controller : null,
+              focusNode: editing ? focusNode : null,
+              style: style,
+              textAlign: textAlign,
+              cursorWidth: cursorWidth,
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                isCollapsed: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onStartEditingWithDetails: (value) {
+                details = value;
+                controller.selection = TextSelection.collapsed(
+                  offset: value.textOffset,
+                );
+                setState(() => editing = true);
+              },
+              onStartEditing: () {},
+            );
+          },
+        ),
+      ),
+    ),
+  );
+
+  final viewport = tester.getRect(
+    find.byKey(LazyTextFieldKeys.textViewport(cellId)),
+  );
+  final textLayoutWidth = viewport.width - (cursorWidth + 1);
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    textAlign: textAlign,
+    textDirection: TextDirection.ltr,
+    textScaler: TextScaler.noScaling,
+    strutStyle: StrutStyle.fromTextStyle(style),
+  )..layout(maxWidth: textLayoutWidth);
+
+  final boxes = painter.getBoxesForSelection(
+    TextSelection(baseOffset: targetOffset, extentOffset: targetOffset + 1),
+  );
+  expect(
+    boxes,
+    isNotEmpty,
+    reason: 'expected a glyph box for offset $targetOffset under $textAlign',
+  );
+  final box = boxes.first;
+  // Prefer the leading half of the glyph so getPositionForOffset does not
+  // advance to the trailing caret (offset + 1).
+  final tapAt = viewport.topLeft + Offset(box.left + 1, box.top + 1);
+
+  await tester.tapAt(tapAt);
+  await tester.pump();
+  await tester.pump();
+
+  expect(editing, isTrue);
+  expect(
+    details.textOffset,
+    targetOffset,
+    reason: 'tapPosition under $textAlign should hit glyph $targetOffset',
+  );
+  expect(controller.selection.baseOffset, targetOffset);
 }
 
 class _InputApp extends StatelessWidget {

@@ -775,6 +775,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
         text: LazyTextFieldLayout.measureText(widget.text),
         style: style,
       ),
+      textAlign: widget.textAlign,
       textDirection: direction,
       textScaler: MediaQuery.textScalerOf(context),
       strutStyle: widget.strutStyle ?? StrutStyle.fromTextStyle(style),
