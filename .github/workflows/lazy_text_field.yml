@@ -28,9 +28,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Dart 3.10 ships with Flutter 3.38+ (required by sdk: ^3.10.0).
-          - name: minimum-3.38
-            flutter-version: 3.38.0
+          # 3.38.0 shipped Dart 3.10.0-*.beta (does not satisfy sdk: ^3.10.0).
+          # 3.38.1 is the first patch with a stable Dart 3.10+.
+          - name: minimum-3.38.1
+            flutter-version: 3.38.1
             channel: stable
           - name: stable
             flutter-version: 3.44.8
