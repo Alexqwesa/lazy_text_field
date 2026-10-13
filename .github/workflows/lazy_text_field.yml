@@ -28,11 +28,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: minimum-3.32
-            flutter-version: 3.32.0
+          # Dart 3.10 ships with Flutter 3.38+ (required by sdk: ^3.10.0).
+          - name: minimum-3.38
+            flutter-version: 3.38.0
             channel: stable
           - name: stable
-            flutter-version: ''
+            flutter-version: 3.44.8
             channel: stable
 
     steps:
@@ -56,6 +57,6 @@ jobs:
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-lcov
+          name: coverage-lcov-${{ matrix.name }}
           path: coverage/lcov.info
           if-no-files-found: error
