@@ -88,12 +88,15 @@ class LazyTextFieldEditController extends ChangeNotifier {
   }
 
   /// Stops editing [cellId] and disposes its edit resources.
-  void stopEditing(String cellId) {
+  ///
+  /// Set [notify] to false when releasing resources during [State.dispose],
+  /// where notifying an [InheritedNotifier] would lock the widget tree.
+  void stopEditing(String cellId, {bool notify = true}) {
     final controller = _controllers.remove(cellId);
     final focusNode = _focusNodes.remove(cellId);
     controller?.dispose();
     focusNode?.dispose();
-    if (controller != null || focusNode != null) {
+    if (notify && (controller != null || focusNode != null)) {
       notifyListeners();
     }
   }

@@ -79,6 +79,59 @@ void main() {
     );
   });
 
+  test(
+    'text that fits unguttered reports overflow after scrollbar gutter wraps it',
+    () {
+      // Ahem 10px glyphs: choose a width where removing ~gutter px forces an
+      // extra wrap past the unguttered natural height.
+      const wrappingText = 'aaaaa aaaaa';
+      const width = 64.0;
+      const largeGutter = 20.0;
+
+      final unguttered = LazyTextFieldLayout.compute(
+        text: wrappingText,
+        width: width,
+        padding: padding,
+        singleLine: false,
+        style: textStyle,
+        maxHeight: null,
+        scrollbarGutter: 0,
+      );
+      final gatedMaxHeight = unguttered.height;
+
+      final withoutGutter = LazyTextFieldLayout.compute(
+        text: wrappingText,
+        width: width,
+        padding: padding,
+        singleLine: false,
+        style: textStyle,
+        maxHeight: gatedMaxHeight,
+        scrollbarGutter: 0,
+      );
+      final withGutter = LazyTextFieldLayout.compute(
+        text: wrappingText,
+        width: width,
+        padding: padding,
+        singleLine: false,
+        style: textStyle,
+        maxHeight: gatedMaxHeight,
+        scrollbarGutter: largeGutter,
+      );
+
+      expect(withoutGutter.hasVerticalOverflow, isFalse);
+      expect(withoutGutter.reservedScrollbarWidth, 0);
+      expect(withGutter.reservedScrollbarWidth, largeGutter);
+      expect(
+        withGutter.hasVerticalOverflow,
+        isTrue,
+        reason:
+            'unguttered h=$gatedMaxHeight layoutW=${unguttered.textLayoutWidth}; '
+            'guttered layoutW=${withGutter.textLayoutWidth} h=${withGutter.height}',
+      );
+      expect(withGutter.height, gatedMaxHeight);
+    },
+  );
+
   testWidgets('height calculation is exact for explicit lines', (tester) async {
     late BuildContext capturedContext;
 

@@ -43,7 +43,10 @@ class ScopedLazyTextField extends StatefulWidget {
   /// Called when editing should save.
   final LazyTextFieldSave onSave;
 
-  /// Whether the field should lay out as one ellipsized line.
+  /// Whether the field should lay out and edit as one line.
+  ///
+  /// When true, read-only text is ellipsized to a single line and the editor
+  /// rejects newline characters (including paste).
   final bool singleLine;
 
   /// Text style used in both read-only and edit modes.
@@ -99,10 +102,27 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   LazyTextFieldEditController? _editController;
   FocusNode? _attachedFocusNode;
   FocusOnKeyEventCallback? _previousHandler;
+  int _editEpoch = 0;
+  bool _saveInFlight = false;
+
+  @override
+  void didUpdateWidget(covariant ScopedLazyTextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.cellId != widget.cellId) {
+      _invalidateEditSession();
+      _detachKeyboardHandler();
+      _editController?.stopEditing(oldWidget.cellId);
+    }
+  }
 
   @override
   void dispose() {
+    _invalidateEditSession();
     _detachKeyboardHandler();
+    // Virtualized lists must release shared edit resources when the cell
+    // leaves the tree; retention would orphan controllers across recycle.
+    // Skip notify: InheritedNotifier cannot markNeedsBuild while locked.
+    _editController?.stopEditing(widget.cellId, notify: false);
     super.dispose();
   }
 
@@ -152,10 +172,18 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     LazyTextFieldEditController editController, {
     int? textOffset,
   }) async {
+    final epoch = _editEpoch;
+    final cellId = widget.cellId;
     final allowed = await Future<bool>.value(
       widget.onWillStartEditing?.call() ?? true,
     );
-    if (!allowed || !mounted) return;
+    if (!allowed ||
+        !mounted ||
+        epoch != _editEpoch ||
+        widget.cellId != cellId ||
+        !identical(_editController, editController)) {
+      return;
+    }
     editController.startEditing(
       cellId: widget.cellId,
       initialValue: widget.text,
@@ -207,14 +235,28 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   }
 
   Future<void> _save(String value) async {
-    final ok = await Future<bool>.value(widget.onSave(value));
-    if (!ok || !mounted) return;
+    if (_saveInFlight || !(_editController?.isEditing(widget.cellId) ?? false)) {
+      return;
+    }
+    _saveInFlight = true;
+    final epoch = _editEpoch;
+    final cellId = widget.cellId;
+    final ok = await widget.onSave(value);
+    if (!mounted || epoch != _editEpoch || widget.cellId != cellId) return;
+    _saveInFlight = false;
+    if (!ok) return;
     _editController?.stopEditing(widget.cellId);
     widget.onSaved?.call(value);
   }
 
   void _cancel() {
+    _invalidateEditSession();
     _editController?.stopEditing(widget.cellId);
     widget.onCancel?.call();
+  }
+
+  void _invalidateEditSession() {
+    _editEpoch++;
+    _saveInFlight = false;
   }
 }

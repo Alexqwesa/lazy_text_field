@@ -42,7 +42,10 @@ class StatefulLazyTextField extends StatefulWidget {
   /// Called when editing should save.
   final LazyTextFieldSave onSave;
 
-  /// Whether the field should lay out as one ellipsized line.
+  /// Whether the field should lay out and edit as one line.
+  ///
+  /// When true, read-only text is ellipsized to a single line and the editor
+  /// rejects newline characters (including paste).
   final bool singleLine;
 
   /// Text style used in both read-only and edit modes.
@@ -94,11 +97,24 @@ class StatefulLazyTextField extends StatefulWidget {
 class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
   TextEditingController? _controller;
   FocusNode? _focusNode;
+  int _editEpoch = 0;
+  bool _saveInFlight = false;
 
   bool get _isEditing => _controller != null && _focusNode != null;
 
   @override
+  void didUpdateWidget(covariant StatefulLazyTextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.cellId != widget.cellId) {
+      _invalidateEditSession();
+      // build() runs after didUpdateWidget; do not setState here.
+      _disposeEditState();
+    }
+  }
+
+  @override
   void dispose() {
+    _invalidateEditSession();
     _disposeEditState();
     super.dispose();
   }
@@ -134,10 +150,18 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
   }
 
   Future<void> _startEditing({int? textOffset}) async {
+    final epoch = _editEpoch;
+    final cellId = widget.cellId;
     final allowed = await Future<bool>.value(
       widget.onWillStartEditing?.call() ?? true,
     );
-    if (!allowed || !mounted || _isEditing) return;
+    if (!allowed ||
+        !mounted ||
+        _isEditing ||
+        epoch != _editEpoch ||
+        widget.cellId != cellId) {
+      return;
+    }
     final controller = TextEditingController(text: widget.text);
     final focusNode = FocusNode(
       debugLabel: 'stateful-lazy-text-field-${widget.cellId}',
@@ -147,7 +171,12 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
       _focusNode = focusNode;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !focusNode.canRequestFocus) return;
+      if (!mounted ||
+          !identical(_controller, controller) ||
+          !identical(_focusNode, focusNode) ||
+          !focusNode.canRequestFocus) {
+        return;
+      }
       focusNode.requestFocus();
       controller.selection = _startEditSelectionFor(
         text: controller.text,
@@ -182,26 +211,44 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
   }
 
   Future<void> _save(String value) async {
-    final ok = await Future<bool>.value(widget.onSave(value));
-    if (!ok || !mounted) return;
-    _disposeEditState();
+    if (_saveInFlight || !_isEditing) return;
+    _saveInFlight = true;
+    final epoch = _editEpoch;
+    final ok = await widget.onSave(value);
+    if (!mounted || epoch != _editEpoch) return;
+    _saveInFlight = false;
+    if (!ok) return;
+    _disposeEditState(update: true);
     widget.onSaved?.call(value);
-    if (mounted) setState(() {});
   }
 
   void _cancel() {
-    _disposeEditState();
+    _invalidateEditSession();
+    _disposeEditState(update: true);
     widget.onCancel?.call();
-    if (mounted) setState(() {});
   }
 
-  void _disposeEditState() {
+  void _invalidateEditSession() {
+    _editEpoch++;
+    _saveInFlight = false;
+  }
+
+  void _disposeEditState({bool update = false}) {
     final controller = _controller;
     final focusNode = _focusNode;
     _controller = null;
     _focusNode = null;
-    controller?.dispose();
-    focusNode?.dispose();
+    if (update && mounted) {
+      setState(() {});
+    }
+    // Dispose after the editor unmounts so EditableText never sees a
+    // disposed controller/focus node during the same frame.
+    if (controller != null || focusNode != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller?.dispose();
+        focusNode?.dispose();
+      });
+    }
   }
 }
 

@@ -117,7 +117,6 @@ class LazyTextFieldLayout {
         .max(minHeight, textHeight + resolvedPadding.vertical)
         .ceilToDouble();
 
-    final hasVerticalOverflow = bounded && naturalHeight > effectiveMaxHeight;
     final textViewportWidth = math.max<double>(
       0,
       fullTextWidth - reservedScrollbarWidth,
@@ -141,6 +140,13 @@ class LazyTextFieldLayout {
           .max(minHeight, textHeight + resolvedPadding.vertical)
           .ceilToDouble();
     }
+
+    // Evaluate after gutter remasurement: reserving the scrollbar can wrap
+    // text past maxHeight even when the unguttered layout still fits.
+    final hasVerticalOverflow =
+        effectiveMaxHeight != null &&
+        effectiveMaxHeight.isFinite &&
+        naturalHeight > effectiveMaxHeight;
 
     final height = effectiveMaxHeight != null && effectiveMaxHeight.isFinite
         ? math.min(naturalHeight, effectiveMaxHeight).ceilToDouble()

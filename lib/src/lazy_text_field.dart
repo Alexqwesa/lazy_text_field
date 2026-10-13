@@ -174,7 +174,10 @@ class LazyTextField extends StatefulWidget {
   /// parent to leave edit mode.
   final VoidCallback? onStopEditing;
 
-  /// Whether the field should lay out as one ellipsized line.
+  /// Whether the field should lay out and edit as one line.
+  ///
+  /// When true, read-only text is ellipsized to a single line and the editor
+  /// uses `maxLines: 1` with newline characters rejected (including paste).
   final bool singleLine;
 
   /// Text style used in both read-only and edit modes.
@@ -608,6 +611,11 @@ class _LazyTextFieldState extends State<LazyTextField> {
         child: content,
       );
     }
+
+    // Prefix/suffix icons live on the outer InputDecorator, outside the inner
+    // TextField's default tap region. Always wrap so mode switches keep a
+    // stable InputDecorator Element and edit-mode icon taps stay "inside".
+    content = TextFieldTapRegion(child: content);
 
     final staticMode = !widget.isEditing && effectiveEnabled;
     return GestureDetector(
@@ -1450,12 +1458,14 @@ class _StaticTextBody extends StatelessWidget {
 
             final markerBuilder = overflowMarkerBuilder;
             if (markerBuilder != null) {
+              final markerAtEnd = textDirection == TextDirection.ltr;
               body = Stack(
                 fit: StackFit.passthrough,
                 children: [
                   paintedText,
                   Positioned(
-                    right: 0,
+                    left: markerAtEnd ? null : 0,
+                    right: markerAtEnd ? 0 : null,
                     bottom: 0,
                     child: _OverflowCornerMarker(
                       details: markerDetails,
@@ -1626,11 +1636,17 @@ class _EditorBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final effectiveExpands = expands ?? true;
+    final effectiveExpands = singleLine ? false : (expands ?? true);
     final effectiveMinLines = effectiveExpands ? null : minLines;
     final effectiveMaxLines = effectiveExpands
         ? null
         : maxLines ?? (singleLine ? 1 : null);
+    final effectiveFormatters = singleLine
+        ? <TextInputFormatter>[
+            FilteringTextInputFormatter.deny(RegExp(r'[\r\n]')),
+            ...?inputFormatters,
+          ]
+        : inputFormatters;
 
     final field = TextField(
       key: ValueKey('editor-$cellId'),
@@ -1665,7 +1681,7 @@ class _EditorBody extends StatelessWidget {
       textInputAction:
           textInputAction ??
           (singleLine ? TextInputAction.done : TextInputAction.newline),
-      inputFormatters: inputFormatters,
+      inputFormatters: effectiveFormatters,
       onChanged: onChanged,
       onSubmitted: onSubmitted,
       onEditingComplete: onEditingComplete,
@@ -1835,13 +1851,21 @@ class _OverflowCornerMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      key: const ValueKey('cell-overflow-corner-marker'),
-      behavior: HitTestBehavior.opaque,
+    return Semantics(
+      container: true,
+      button: true,
+      label: details.expanded ? 'Collapse overflow' : 'Expand overflow',
       onTap: details.onToggle,
-      child: SizedBox.square(
-        dimension: details.size,
-        child: builder(context, details),
+      child: GestureDetector(
+        key: const ValueKey('cell-overflow-corner-marker'),
+        behavior: HitTestBehavior.opaque,
+        onTap: details.onToggle,
+        child: ExcludeSemantics(
+          child: SizedBox.square(
+            dimension: details.size,
+            child: builder(context, details),
+          ),
+        ),
       ),
     );
   }
