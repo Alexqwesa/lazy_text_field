@@ -263,6 +263,74 @@ void main() {
     });
 
     testWidgets(
+      'quick switch between scoped cells does not use a disposed controller',
+      (tester) async {
+        final editController = LazyTextFieldEditController();
+        addTearDown(editController.dispose);
+
+        await tester.pumpWidget(
+          _LifecycleApp(
+            child: LazyTextFieldControllerScope(
+              controller: editController,
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: 200,
+                    child: ScopedLazyTextField(
+                      cellId: 'a',
+                      text: 'cell-a-value',
+                      style: style,
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        isCollapsed: true,
+                        contentPadding: EdgeInsets.all(4),
+                      ),
+                      onSave: (_) => true,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 200,
+                    child: ScopedLazyTextField(
+                      cellId: 'b',
+                      text: 'cell-b-value',
+                      style: style,
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        isCollapsed: true,
+                        contentPadding: EdgeInsets.all(4),
+                      ),
+                      onSave: (_) => true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+
+        await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface('a')));
+        await tester.pump();
+        await tester.enterText(find.byType(EditableText), 'cell-a-draft');
+        // Switch immediately while IME may still deliver edits.
+        await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface('b')));
+        await tester.pump();
+        await tester.pump();
+
+        expect(tester.takeException(), isNull);
+        expect(editController.isEditing('a'), isFalse);
+        expect(editController.isEditing('b'), isTrue);
+        expect(find.byType(EditableText), findsOneWidget);
+        expect(
+          tester
+              .widget<EditableText>(find.byType(EditableText))
+              .controller
+              .text,
+          'cell-b-value',
+        );
+      },
+    );
+
+    testWidgets(
       'unmounting an active scoped cell stops editing (virtualized dispose)',
       (tester) async {
         final editController = LazyTextFieldEditController();

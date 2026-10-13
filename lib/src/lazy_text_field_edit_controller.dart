@@ -91,14 +91,26 @@ class LazyTextFieldEditController extends ChangeNotifier {
   ///
   /// Set [notify] to false when releasing resources during [State.dispose],
   /// where notifying an [InheritedNotifier] would lock the widget tree.
+  ///
+  /// Controllers are disposed on the next frame after listeners rebuild so a
+  /// still-connected IME cannot write into a disposed [TextEditingController]
+  /// when quickly switching cells.
   void stopEditing(String cellId, {bool notify = true}) {
     final controller = _controllers.remove(cellId);
     final focusNode = _focusNodes.remove(cellId);
-    controller?.dispose();
-    focusNode?.dispose();
-    if (notify && (controller != null || focusNode != null)) {
+    if (controller == null && focusNode == null) return;
+
+    // Close the text input connection before the editor unmounts / disposes.
+    if (focusNode != null && focusNode.hasFocus) {
+      focusNode.unfocus();
+    }
+    if (notify) {
       notifyListeners();
     }
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      controller?.dispose();
+      focusNode?.dispose();
+    });
   }
 
   /// Stops every active edit whose id matches [shouldStop].

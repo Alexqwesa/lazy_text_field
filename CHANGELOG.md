@@ -5,33 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-10-13
+
+### Fixed
+
+- Quickly switching between scoped cells no longer disposes the previous
+  `TextEditingController` while the IME can still update it.
+
 ## [2.0.0] - 2026-10-13
+
+Breaking rewrite around native Material decoration. Not previously published
+to pub.dev (latest published was 1.0.3).
 
 ### Added
 
 - Native `InputDecoration` support, including labels, helper/error/counter
   content, prefix/suffix widgets, density, constraints, and Material themes.
-- A persistent native `InputDecorator` across read-only and editing modes.
+- A persistent native `InputDecorator` across read-only and editing modes so
+  the lightweight text child can be swapped for a real `TextField` without
+  remounting the decorator.
 - Per-cell viewport layout caching for repeated intrinsic and layout queries.
 - Fixed-height sizing without text measurement when `minHeight` and
   `maxHeight` are the same finite value.
 - `textAlignVertical` and `buildCounter` support on `LazyTextField`.
-- Documentation for fixed-slot visibility and overlay fallbacks.
+- Wrapper passthroughs: `inputFormatters`, `onChanged`, `keyboardType`,
+  `textInputAction`, and `maxLength`.
+- `errorMessage` for layout-stable validation feedback (overlay popup). Prefer
+  this over `InputDecoration.errorText`.
+- Edit-session epoch / in-flight save guards; scoped dispose / `cellId`
+  handling; `TextFieldTapRegion` around decorated editors.
+- Documentation for the no-jump decoration contract, fixed-slot visibility,
+  overlay fallbacks, and validation via `errorMessage` + `onSave`.
 
 ### Changed
 
 - Static and editing modes now share native decoration geometry while the
   lightweight text child is replaced by the real `TextField`.
-- `minHeight` and `maxHeight` now constrain the text viewport; native
-  supporting content remains outside those bounds.
-- Full decorated height is measured by Flutter layout. Synchronous metrics
-  remain exact for the undecorated text viewport.
+- `minHeight` and `maxHeight` now constrain the **text viewport**; native
+  supporting content (helper/error/counter) remains outside those bounds.
+- Full decorated height is measured by Flutter layout. Synchronous helpers
+  (`LazyTextField.computeHeightForWidth`, `LazyTextFieldMetrics`,
+  `LazyTextFieldLayout`) remain exact for the undecorated text viewport only.
+- Wrappers (`StatefulLazyTextField`, `ScopedLazyTextField`) take
+  `InputDecoration` instead of `LazyInputDecoration`.
+- Prefer `InputDecoration.prefixIcon` / `suffixIcon` for field chrome;
+  `reservedTrailingWidth` is for app-owned overlays outside the decorator.
+- `singleLine` rejects newlines; overflow accounts for scrollbar gutter;
+  overflow marker supports RTL + semantics; `tapPosition` honors `textAlign`.
+- Minimum Flutter SDK raised to `>=3.38.1`.
 
 ### Removed
 
 - `LazyInputDecoration` and `LazyInputDecorationVisibility`.
 - The widget-level `padding` parameter. Use
   `InputDecoration.contentPadding`.
+
+### Migration
+
+- Replace `LazyInputDecoration(...)` with `InputDecoration(...)`.
+- Move `padding:` to `decoration: InputDecoration(contentPadding: ...)`.
+- Keep decoration layout-equivalent across the read-only → edit switch
+  (do not add/remove/resize helper, error, icons, or padding when editing
+  starts). Reserve stable slots or use overlays for edit-only controls.
+- Do not use `InputDecoration.errorText` for validation; use `errorMessage`
+  and keep `onSave` as the commit gate.
+- If you sized rows with `computeHeightForWidth`, that value is still the
+  text-viewport height; add decorator chrome separately or let Flutter lay
+  out the full field.
 
 ## [1.0.3] - 2026-07-28
 
@@ -107,7 +147,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calculation.
 - Visual example app under `example/`.
 
-[Unreleased]: https://github.com/Alexqwesa/lazy_text_field/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/Alexqwesa/lazy_text_field/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/Alexqwesa/lazy_text_field/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/Alexqwesa/lazy_text_field/compare/v1.0.3...v2.0.0
 [1.0.3]: https://github.com/Alexqwesa/lazy_text_field/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/Alexqwesa/lazy_text_field/compare/v1.0.1...v1.0.2

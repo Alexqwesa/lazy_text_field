@@ -34,7 +34,7 @@ flutter run -d chrome -t lib/main_live_demo.dart
 
 ```yaml
 dependencies:
-  lazy_text_field: ^2.0.0
+  lazy_text_field: ^2.0.1
 ```
 
 ```dart

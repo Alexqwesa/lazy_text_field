@@ -275,11 +275,15 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
     final focusNode = _focusNode;
     _controller = null;
     _focusNode = null;
+    // Drop focus first so TextInput stops sending updates to this editor.
+    if (focusNode != null && focusNode.hasFocus) {
+      focusNode.unfocus();
+    }
     if (update && mounted) {
       setState(() {});
     }
-    // Dispose after the editor unmounts so EditableText never sees a
-    // disposed controller/focus node during the same frame.
+    // Dispose after the editor unmounts so a queued IME update cannot hit a
+    // disposed controller (e.g. save/cancel then immediately edit elsewhere).
     if (controller != null || focusNode != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         controller?.dispose();

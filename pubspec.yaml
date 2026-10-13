@@ -1,6 +1,6 @@
 name: lazy_text_field
 description: Lazy Material text fields for tables and grids with stable native InputDecoration transitions.
-version: 2.0.0
+version: 2.0.1
 homepage: https://github.com/Alexqwesa/lazy_text_field
 repository: https://github.com/Alexqwesa/lazy_text_field
 issue_tracker: https://github.com/Alexqwesa/lazy_text_field/issues
