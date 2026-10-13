@@ -104,6 +104,39 @@ starts. In particular, changing `contentPadding`, density, constraints, border
 dimensions, icon constraints, supporting-text lines, or custom widget
 intrinsics can reflow the text. Use a stable fixed slot or an overlay instead.
 
+### Validation errors (no height jump)
+
+`InputDecoration.errorText` is **unsupported**. It shares the decorator’s
+supporting-text slot, so adding/removing it changes field height and breaks the
+no-jump guarantee. You still pass a normal `InputDecoration` for borders,
+labels, icons, etc. — just leave `errorText` / `error` unset.
+
+Use `errorMessage` for commit failures. It renders a popup below the field via
+an overlay, so measured size stays unchanged. Keep `onSave` as the commit gate:
+
+```dart
+String? error;
+
+StatefulLazyTextField(
+  cellId: 'quantity',
+  text: quantity,
+  errorMessage: error,
+  onChanged: (_) => setState(() => error = null),
+  onSave: (value) {
+    if (value.isEmpty) {
+      setState(() => error = 'Required');
+      return false;
+    }
+    setState(() => error = null);
+    return saveQuantity(value);
+  },
+)
+```
+
+In debug builds, a non-empty `InputDecoration.errorText` / non-null `error`
+asserts. In all builds those fields are stripped before the decorator mounts
+(`copyWith(errorText: null)` cannot clear them — Flutter keeps the old value).
+
 ### Fixed slot with animated visibility
 
 Reserve the slot in both modes and animate only its paint:

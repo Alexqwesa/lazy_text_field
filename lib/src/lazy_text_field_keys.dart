@@ -29,6 +29,11 @@ final class LazyTextFieldKeys {
     return ValueKey('lazy-text-field.scrollbar.$cellId');
   }
 
+  /// Key for the layout-stable validation error popup below the field.
+  static Key errorPopup(String cellId) {
+    return ValueKey('lazy-text-field.error-popup.$cellId');
+  }
+
   /// Legacy key kept for existing integration tests.
   static Key legacyReadOnlySurface(String cellId) {
     return ValueKey('read-only-surface-$cellId');

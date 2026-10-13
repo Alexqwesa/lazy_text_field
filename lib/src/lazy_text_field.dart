@@ -111,6 +111,7 @@ class LazyTextField extends StatefulWidget {
     this.overflowMarkerColor,
     this.expandedOverflowMarkerColor,
     this.overflowMarkerBuilder = LazyTextField.defaultOverflowMarkerBuilder,
+    this.errorMessage,
     this.onChanged,
     this.onSubmitted,
     this.onEditingComplete,
@@ -247,6 +248,14 @@ class LazyTextField extends StatefulWidget {
 
   /// Builder for the read-only overflow marker, or null to hide it.
   final LazyTextFieldOverflowMarkerBuilder? overflowMarkerBuilder;
+
+  /// Validation message shown in a popup below the field (no layout impact).
+  ///
+  /// Do not use [InputDecoration.errorText] — that slot changes field height
+  /// and is unsupported here. Keep [decoration] layout-stable and put commit
+  /// failures in [errorMessage] instead (typically when a wrapper [onSave]
+  /// returns false).
+  final String? errorMessage;
 
   /// Passed through to the internal [TextField.onChanged].
   final ValueChanged<String>? onChanged;
@@ -444,6 +453,9 @@ class _LazyTextFieldState extends State<LazyTextField> {
   FocusNode? _listenedFocusNode;
   ScrollController? _scrollController;
   final GlobalKey _textViewportRenderKey = GlobalKey();
+  final LayerLink _errorLink = LayerLink();
+  final OverlayPortalController _errorPortalController =
+      OverlayPortalController();
   bool _isHovering = false;
   String? _lastLayoutText;
   LazyTextFieldStartEditDetails? _lastStartEditDetails;
@@ -453,6 +465,8 @@ class _LazyTextFieldState extends State<LazyTextField> {
     super.initState();
     _syncControllerListener();
     _syncFocusNodeListener();
+    _debugAssertNoDecorationErrorText();
+    _scheduleSyncErrorPopup();
   }
 
   @override
@@ -460,6 +474,8 @@ class _LazyTextFieldState extends State<LazyTextField> {
     super.didUpdateWidget(oldWidget);
     _syncControllerListener();
     _syncFocusNodeListener();
+    _debugAssertNoDecorationErrorText();
+    _scheduleSyncErrorPopup();
 
     final focusNode = widget.focusNode;
     if (!widget.isEditing || focusNode == null) {
@@ -486,6 +502,38 @@ class _LazyTextFieldState extends State<LazyTextField> {
       _scrollController?.dispose();
     }
     super.dispose();
+  }
+
+  String? get _resolvedErrorMessage {
+    final explicit = widget.errorMessage;
+    if (explicit == null || explicit.isEmpty) return null;
+    return explicit;
+  }
+
+  void _debugAssertNoDecorationErrorText() {
+    final decoration = widget.decoration;
+    assert(
+      decoration == null ||
+          ((decoration.errorText == null || decoration.errorText!.isEmpty) &&
+              decoration.error == null),
+      'LazyTextField does not support InputDecoration.errorText / error '
+      'because they change field height. Use errorMessage for validation '
+      'feedback, and keep onSave as the commit gate.',
+    );
+  }
+
+  void _scheduleSyncErrorPopup() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final message = _resolvedErrorMessage;
+      if (message != null) {
+        if (!_errorPortalController.isShowing) {
+          _errorPortalController.show();
+        }
+      } else if (_errorPortalController.isShowing) {
+        _errorPortalController.hide();
+      }
+    });
   }
 
   void _syncControllerListener() {
@@ -618,7 +666,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
     content = TextFieldTapRegion(child: content);
 
     final staticMode = !widget.isEditing && effectiveEnabled;
-    return GestureDetector(
+    final field = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: staticMode
           ? (details) {
@@ -645,6 +693,29 @@ class _LazyTextFieldState extends State<LazyTextField> {
         ),
       ),
     );
+
+    return OverlayPortal(
+      controller: _errorPortalController,
+      overlayChildBuilder: (context) {
+        final message = _resolvedErrorMessage;
+        if (message == null) return const SizedBox.shrink();
+        return CompositedTransformFollower(
+          link: _errorLink,
+          showWhenUnlinked: false,
+          targetAnchor: Alignment.bottomLeft,
+          followerAnchor: Alignment.topLeft,
+          offset: const Offset(0, 4),
+          child: _ValidationErrorPopup(
+            cellId: widget.cellId,
+            message: message,
+          ),
+        );
+      },
+      child: CompositedTransformTarget(
+        link: _errorLink,
+        child: field,
+      ),
+    );
   }
 
   void _startEditing() {
@@ -668,15 +739,19 @@ class _LazyTextFieldState extends State<LazyTextField> {
     String value,
   ) {
     final theme = Theme.of(context);
-    var effective = decoration
-        .applyDefaults(theme.inputDecorationTheme)
-        .copyWith(
-          enabled: widget.enabled ?? decoration.enabled,
-          hintMaxLines:
-              decoration.hintMaxLines ??
-              theme.inputDecorationTheme.hintMaxLines ??
-              widget.maxLines,
-        );
+    // InputDecoration.copyWith(errorText: null) does NOT clear errorText
+    // (null means "keep"). Rebuild without the error slot instead.
+    var effective = _withoutErrorSlot(
+      decoration
+          .applyDefaults(theme.inputDecorationTheme)
+          .copyWith(
+            enabled: widget.enabled ?? decoration.enabled,
+            hintMaxLines:
+                decoration.hintMaxLines ??
+                theme.inputDecorationTheme.hintMaxLines ??
+                widget.maxLines,
+          ),
+    );
 
     if (effective.counter != null || effective.counterText != null) {
       return effective;
@@ -1926,6 +2001,105 @@ class _OverflowCornerMarkerPainter extends CustomPainter {
 
 double _editableTextGutter(double cursorWidth) {
   return cursorWidth + 1;
+}
+
+/// Drops [InputDecoration.errorText] / [InputDecoration.error].
+///
+/// [InputDecoration.copyWith] cannot clear those fields with `null` because it
+/// uses `errorText ?? this.errorText`.
+InputDecoration _withoutErrorSlot(InputDecoration decoration) {
+  if ((decoration.errorText == null || decoration.errorText!.isEmpty) &&
+      decoration.error == null) {
+    return decoration;
+  }
+  return InputDecoration(
+    icon: decoration.icon,
+    iconColor: decoration.iconColor,
+    label: decoration.label,
+    labelText: decoration.labelText,
+    labelStyle: decoration.labelStyle,
+    floatingLabelStyle: decoration.floatingLabelStyle,
+    helper: decoration.helper,
+    helperText: decoration.helperText,
+    helperStyle: decoration.helperStyle,
+    helperMaxLines: decoration.helperMaxLines,
+    hintText: decoration.hintText,
+    hint: decoration.hint,
+    hintStyle: decoration.hintStyle,
+    hintTextDirection: decoration.hintTextDirection,
+    hintMaxLines: decoration.hintMaxLines,
+    hintFadeDuration: decoration.hintFadeDuration,
+    maintainHintSize: decoration.maintainHintSize,
+    maintainLabelSize: decoration.maintainLabelSize,
+    errorStyle: decoration.errorStyle,
+    errorMaxLines: decoration.errorMaxLines,
+    floatingLabelBehavior: decoration.floatingLabelBehavior,
+    floatingLabelAlignment: decoration.floatingLabelAlignment,
+    isCollapsed: decoration.isCollapsed,
+    isDense: decoration.isDense,
+    contentPadding: decoration.contentPadding,
+    prefixIcon: decoration.prefixIcon,
+    prefixIconConstraints: decoration.prefixIconConstraints,
+    prefix: decoration.prefix,
+    prefixText: decoration.prefixText,
+    prefixStyle: decoration.prefixStyle,
+    prefixIconColor: decoration.prefixIconColor,
+    suffixIcon: decoration.suffixIcon,
+    suffix: decoration.suffix,
+    suffixText: decoration.suffixText,
+    suffixStyle: decoration.suffixStyle,
+    suffixIconColor: decoration.suffixIconColor,
+    suffixIconConstraints: decoration.suffixIconConstraints,
+    counter: decoration.counter,
+    counterText: decoration.counterText,
+    counterStyle: decoration.counterStyle,
+    filled: decoration.filled,
+    fillColor: decoration.fillColor,
+    focusColor: decoration.focusColor,
+    hoverColor: decoration.hoverColor,
+    errorBorder: decoration.errorBorder,
+    focusedBorder: decoration.focusedBorder,
+    focusedErrorBorder: decoration.focusedErrorBorder,
+    disabledBorder: decoration.disabledBorder,
+    enabledBorder: decoration.enabledBorder,
+    border: decoration.border,
+    enabled: decoration.enabled,
+    semanticCounterText: decoration.semanticCounterText,
+    alignLabelWithHint: decoration.alignLabelWithHint,
+    constraints: decoration.constraints,
+    visualDensity: decoration.visualDensity,
+  );
+}
+
+class _ValidationErrorPopup extends StatelessWidget {
+  const _ValidationErrorPopup({required this.cellId, required this.message});
+
+  final String cellId;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Material(
+      key: LazyTextFieldKeys.errorPopup(cellId),
+      elevation: 3,
+      borderRadius: BorderRadius.circular(4),
+      color: colorScheme.errorContainer,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 280),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Text(
+            message,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onErrorContainer,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 Widget _defaultEditorContextMenuBuilder(

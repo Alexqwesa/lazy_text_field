@@ -34,6 +34,7 @@ class StatefulLazyTextField extends StatefulWidget {
     this.keyboardType,
     this.textInputAction,
     this.maxLength,
+    this.errorMessage,
     this.onWillStartEditing,
     this.onCancel,
     this.onSaved,
@@ -105,6 +106,12 @@ class StatefulLazyTextField extends StatefulWidget {
   /// Passed through to the internal [TextField.maxLength].
   final int? maxLength;
 
+  /// Validation message shown in a layout-stable popup below the field.
+  ///
+  /// Prefer this over [InputDecoration.errorText] so commit failures do not
+  /// change field height. Keep using [onSave] as the commit gate.
+  final String? errorMessage;
+
   /// Optional guard called before edit resources are created.
   final FutureOr<bool> Function()? onWillStartEditing;
 
@@ -170,6 +177,7 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
       keyboardType: widget.keyboardType,
       textInputAction: widget.textInputAction,
       maxLength: widget.maxLength,
+      errorMessage: widget.errorMessage,
       onStartEditing: () => unawaited(_startEditing()),
       onStartEditingWithDetails: (details) =>
           unawaited(_startEditing(textOffset: details.textOffset)),

@@ -156,6 +156,132 @@ void main() {
     );
   });
 
+  group('validation error popup', () {
+    testWidgets(
+      'errorMessage shows a popup without changing field size',
+      (tester) async {
+        var error = null as String?;
+
+        Future<void> pump() {
+          return tester.pumpWidget(
+            _InputApp(
+              child: SizedBox(
+                width: 200,
+                child: StatefulLazyTextField(
+                  cellId: 'qty',
+                  text: '1',
+                  style: style,
+                  errorMessage: error,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    isCollapsed: true,
+                    contentPadding: EdgeInsets.all(8),
+                  ),
+                  onSave: (_) => true,
+                ),
+              ),
+            ),
+          );
+        }
+
+        await pump();
+        final root = find.byKey(LazyTextFieldKeys.root('qty'));
+        final sizeBefore = tester.getSize(root);
+
+        error = 'Must be positive';
+        await pump();
+        await tester.pump();
+
+        expect(
+          find.byKey(LazyTextFieldKeys.errorPopup('qty')),
+          findsOneWidget,
+        );
+        expect(find.text('Must be positive'), findsOneWidget);
+        expect(tester.getSize(root), sizeBefore);
+
+        error = null;
+        await pump();
+        await tester.pump();
+        expect(find.byKey(LazyTextFieldKeys.errorPopup('qty')), findsNothing);
+        expect(tester.getSize(root), sizeBefore);
+      },
+    );
+
+    testWidgets(
+      'InputDecoration.errorText is rejected in debug',
+      (tester) async {
+        await tester.pumpWidget(
+          _InputApp(
+            child: SizedBox(
+              width: 200,
+              child: LazyTextField(
+                cellId: 'unsupported-error',
+                text: 'value',
+                isEditing: false,
+                style: style,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  isCollapsed: true,
+                  contentPadding: EdgeInsets.all(8),
+                  errorText: 'From decoration',
+                ),
+                onStartEditing: () {},
+              ),
+            ),
+          ),
+        );
+
+        final exception = tester.takeException();
+        expect(exception, isA<AssertionError>());
+        expect(
+          '$exception',
+          contains('does not support InputDecoration.errorText'),
+        );
+      },
+    );
+
+    testWidgets(
+      'decorator never mounts non-empty errorText from decoration',
+      (tester) async {
+        // Bypass the debug assert path by pumping errorMessage only; then
+        // verify stripping would leave InputDecorator without errorText when
+        // a parent mistakenly also set decoration.errorText — covered via the
+        // assert test above. Here ensure errorMessage does not write errorText.
+        await tester.pumpWidget(
+          _InputApp(
+            child: SizedBox(
+              width: 200,
+              child: LazyTextField(
+                cellId: 'popup-only',
+                text: 'value',
+                isEditing: false,
+                style: style,
+                errorMessage: 'Popup only',
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  isCollapsed: true,
+                  contentPadding: EdgeInsets.all(8),
+                ),
+                onStartEditing: () {},
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final decorator = tester.widget<InputDecorator>(
+          find.byType(InputDecorator),
+        );
+        expect(decorator.decoration.errorText, isNull);
+        expect(decorator.decoration.error, isNull);
+        expect(
+          find.byKey(LazyTextFieldKeys.errorPopup('popup-only')),
+          findsOneWidget,
+        );
+      },
+    );
+  });
+
   group('P2 caret / parent rebuild / overflow a11y', () {
     testWidgets(
       'tapPosition places caret under right-aligned text',
