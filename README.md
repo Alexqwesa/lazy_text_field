@@ -11,9 +11,10 @@ does not allocate a `TextField`, `EditableText`, controller, focus node, or
 editing infrastructure until the cell is activated. The same decorator remains
 mounted while its lightweight text child is replaced by the real editor.
 
-For supported decorations, the switch preserves the field bounds, text
-viewport, baseline, wrapping, and glyph position. Flutter's normal focus,
-floating-label, color, and border transitions remain animated.
+When decoration geometry remains stable, switching between display and editing
+modes preserves the field bounds, text viewport, baseline, wrapping, and glyph
+position. Flutter's normal focus, floating-label, color, and border transitions
+remain animated.
 
 ## Live demo
 
@@ -88,31 +89,40 @@ for both in read-only mode.
 `StatefulLazyTextField` and `ScopedLazyTextField` support
 `startEditSelection`: `beginning`, `end`, `tapPosition`, or `fullSelection`.
 
-## Decoration stability
+## Decorations support and stability
 
-The no-jump guarantee applies when the decoration remains layout-equivalent
-across the mode switch. Supported decoration includes:
+`LazyTextField` uses Flutter's native `InputDecoration` and keeps the same
+`InputDecorator` mounted in both display and editing modes.
 
-- native fill, borders, labels, hints, helper/error/counter regions and themes
-- prefix/suffix text and fixed-size icon slots
-- Material 2 and Material 3 focus and floating-label animations
-- custom decoration widgets whose intrinsic dimensions remain constant
-- supporting text whose layout space is reserved before editing
+### Supported decorations
 
-Do not add, remove, or resize layout-affecting decoration content when editing
-starts. In particular, changing `contentPadding`, density, constraints, border
-dimensions, icon constraints, supporting-text lines, or custom widget
-intrinsics can reflow the text. Use a stable fixed slot or an overlay instead.
+- Filled and outlined borders
+- Floating labels and hint text
+- Prefix and suffix text/icons
+- Helper text and character counters
+- Content padding, density, and constraints
+- Material 2 and Material 3 themes
+- Focus, label, color, and border animations
+- Custom decoration widgets with stable dimensions
 
-### Validation errors (no height jump)
+### Limitations
 
-`InputDecoration.errorText` is **unsupported**. It shares the decorator’s
-supporting-text slot, so adding/removing it changes field height and breaks the
-no-jump guarantee. You still pass a normal `InputDecoration` for borders,
-labels, icons, etc. — just leave `errorText` / `error` unset.
+**No-layout-jump guarantee**
 
-Use `errorMessage` for commit failures. It renders a popup below the field via
-an overlay, so measured size stays unchanged. Keep `onSave` as the commit gate:
+The field bounds, text viewport, baseline, wrapping, and glyph position remain
+stable when decoration geometry does not change between display and editing
+modes.
+
+Adding, removing, or resizing decoration content may change the layout. This
+includes changes to padding, constraints, icon sizes, and supporting-text
+regions.
+
+**Validation errors**
+
+`InputDecoration.errorText` and `InputDecoration.error` are not supported.
+
+Use `LazyTextField.errorMessage` instead. It displays validation errors in an
+overlay without changing the field's layout. Keep `onSave` as the commit gate:
 
 ```dart
 String? error;
@@ -137,9 +147,10 @@ In debug builds, a non-empty `InputDecoration.errorText` / non-null `error`
 asserts. In all builds those fields are stripped before the decorator mounts
 (`copyWith(errorText: null)` cannot clear them — Flutter keeps the old value).
 
-### Fixed slot with animated visibility
+**Dynamic decoration**
 
-Reserve the slot in both modes and animate only its paint:
+For controls that appear only during editing, reserve their layout space in both
+modes and change only their visibility:
 
 ```dart
 InputDecoration(
@@ -158,11 +169,8 @@ InputDecoration(
 )
 ```
 
-### Overlay fallback
-
-For edit-only controls whose decoration geometry must change, keep the field
-decoration stable and overlay the control. Reserve its width in both modes when
-it must not cover text:
+Alternatively, use an external overlay. Reserve its width in both modes when it
+must not cover text:
 
 ```dart
 Stack(
@@ -192,8 +200,8 @@ Stack(
 )
 ```
 
-If the entire field geometry must differ while editing, use a conventional
-overlay `TextField` instead of the child-switching mode.
+If different field geometry is required while editing, use a conventional
+overlay `TextField`.
 
 ## Overflow marker
 
