@@ -705,16 +705,10 @@ class _LazyTextFieldState extends State<LazyTextField> {
           targetAnchor: Alignment.bottomLeft,
           followerAnchor: Alignment.topLeft,
           offset: const Offset(0, 4),
-          child: _ValidationErrorPopup(
-            cellId: widget.cellId,
-            message: message,
-          ),
+          child: _ValidationErrorPopup(cellId: widget.cellId, message: message),
         );
       },
-      child: CompositedTransformTarget(
-        link: _errorLink,
-        child: field,
-      ),
+      child: CompositedTransformTarget(link: _errorLink, child: field),
     );
   }
 

@@ -48,107 +48,102 @@ void main() {
   }
 
   group('P0 save / cancel / cellId races', () {
-    testWidgets(
-      'pending save after cancel does not wipe a later edit',
-      (tester) async {
-        final gate = Completer<bool>();
-        final saved = <String>[];
-        var saveCalls = 0;
+    testWidgets('pending save after cancel does not wipe a later edit', (
+      tester,
+    ) async {
+      final gate = Completer<bool>();
+      final saved = <String>[];
+      var saveCalls = 0;
 
-        await pumpStateful(
-          tester,
-          cellId: 'cell',
-          text: 'alpha',
-          onSave: (_) {
-            saveCalls++;
-            // First save stays pending; later saves (if any) accept immediately.
-            if (saveCalls == 1) return gate.future;
-            return true;
-          },
-          onSaved: saved.add,
-          onCancel: () {},
-        );
+      await pumpStateful(
+        tester,
+        cellId: 'cell',
+        text: 'alpha',
+        onSave: (_) {
+          saveCalls++;
+          // First save stays pending; later saves (if any) accept immediately.
+          if (saveCalls == 1) return gate.future;
+          return true;
+        },
+        onSaved: saved.add,
+        onCancel: () {},
+      );
 
-        await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface('cell')));
-        await tester.pump();
-        await tester.enterText(find.byType(EditableText), 'alpha-edited');
-        await tester.pump();
-        // Ctrl+S keeps focus (unlike IME done), so Escape can still cancel.
+      await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface('cell')));
+      await tester.pump();
+      await tester.enterText(find.byType(EditableText), 'alpha-edited');
+      await tester.pump();
+      // Ctrl+S keeps focus (unlike IME done), so Escape can still cancel.
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+      expect(find.byType(EditableText), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(find.byType(EditableText), findsNothing);
+
+      await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface('cell')));
+      await tester.pump();
+      await tester.enterText(find.byType(EditableText), 'beta-draft');
+      await tester.pump();
+
+      gate.complete(true);
+      await tester.pump();
+
+      expect(find.byType(EditableText), findsOneWidget);
+      expect(
+        tester.widget<EditableText>(find.byType(EditableText)).controller.text,
+        'beta-draft',
+      );
+      expect(saved, isEmpty);
+    });
+
+    testWidgets('two concurrent saves commit once and call onSaved once', (
+      tester,
+    ) async {
+      final gate = Completer<bool>();
+      var saveCalls = 0;
+      final saved = <String>[];
+
+      await pumpStateful(
+        tester,
+        cellId: 'cell',
+        text: 'value',
+        onSave: (_) {
+          saveCalls++;
+          return gate.future;
+        },
+        onSaved: saved.add,
+      );
+
+      await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface('cell')));
+      await tester.pump();
+      await tester.enterText(find.byType(EditableText), 'committed');
+      await tester.pump();
+
+      Future<void> pressSaveShortcut() async {
         await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
         await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
         await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
         await tester.pump();
-        expect(find.byType(EditableText), findsOneWidget);
+      }
 
-        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-        await tester.pump();
-        expect(find.byType(EditableText), findsNothing);
+      await pressSaveShortcut();
+      await pressSaveShortcut();
 
-        await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface('cell')));
-        await tester.pump();
-        await tester.enterText(find.byType(EditableText), 'beta-draft');
-        await tester.pump();
+      expect(saveCalls, 1);
+      expect(find.byType(EditableText), findsOneWidget);
 
-        gate.complete(true);
-        await tester.pump();
+      gate.complete(true);
+      await tester.pump();
+      await tester.pump();
 
-        expect(find.byType(EditableText), findsOneWidget);
-        expect(
-          tester.widget<EditableText>(find.byType(EditableText)).controller.text,
-          'beta-draft',
-        );
-        expect(saved, isEmpty);
-      },
-    );
-
-    testWidgets(
-      'two concurrent saves commit once and call onSaved once',
-      (tester) async {
-        final gate = Completer<bool>();
-        var saveCalls = 0;
-        final saved = <String>[];
-
-        await pumpStateful(
-          tester,
-          cellId: 'cell',
-          text: 'value',
-          onSave: (_) {
-            saveCalls++;
-            return gate.future;
-          },
-          onSaved: saved.add,
-        );
-
-        await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface('cell')));
-        await tester.pump();
-        await tester.enterText(find.byType(EditableText), 'committed');
-        await tester.pump();
-
-        Future<void> pressSaveShortcut() async {
-          await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-          await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
-          await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
-          await tester.pump();
-        }
-
-        await pressSaveShortcut();
-        await pressSaveShortcut();
-
-        expect(saveCalls, 1);
-        expect(find.byType(EditableText), findsOneWidget);
-
-        gate.complete(true);
-        await tester.pump();
-        await tester.pump();
-
-        expect(saved, ['committed']);
-        expect(
-          find.byKey(LazyTextFieldKeys.editorSurface('cell')),
-          findsNothing,
-        );
-        expect(find.byType(EditableText), findsNothing);
-      },
-    );
+      expect(saved, ['committed']);
+      expect(find.byKey(LazyTextFieldKeys.editorSurface('cell')), findsNothing);
+      expect(find.byType(EditableText), findsNothing);
+    });
 
     testWidgets(
       'reusing StatefulLazyTextField state with a new cellId drops the draft',
@@ -190,8 +185,14 @@ void main() {
         await pump();
         await tester.pump();
 
-        expect(find.byKey(LazyTextFieldKeys.staticSurface('new')), findsOneWidget);
-        expect(find.byKey(LazyTextFieldKeys.editorSurface('new')), findsNothing);
+        expect(
+          find.byKey(LazyTextFieldKeys.staticSurface('new')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(LazyTextFieldKeys.editorSurface('new')),
+          findsNothing,
+        );
         expect(find.byType(EditableText), findsNothing);
         expect(find.textContaining('draft-old'), findsNothing);
       },
@@ -199,74 +200,67 @@ void main() {
   });
 
   group('P1 scoped lifecycle', () {
-    testWidgets(
-      'activating another scoped cell releases the previous edit',
-      (tester) async {
-        final editController = LazyTextFieldEditController();
-        addTearDown(editController.dispose);
+    testWidgets('activating another scoped cell releases the previous edit', (
+      tester,
+    ) async {
+      final editController = LazyTextFieldEditController();
+      addTearDown(editController.dispose);
 
-        await tester.pumpWidget(
-          _LifecycleApp(
-            child: LazyTextFieldControllerScope(
-              controller: editController,
-              child: Column(
-                children: [
-                  SizedBox(
-                    width: 200,
-                    child: ScopedLazyTextField(
-                      cellId: 'a',
-                      text: 'cell-a',
-                      style: style,
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        isCollapsed: true,
-                        contentPadding: EdgeInsets.all(4),
-                      ),
-                      onSave: (_) => true,
+      await tester.pumpWidget(
+        _LifecycleApp(
+          child: LazyTextFieldControllerScope(
+            controller: editController,
+            child: Column(
+              children: [
+                SizedBox(
+                  width: 200,
+                  child: ScopedLazyTextField(
+                    cellId: 'a',
+                    text: 'cell-a',
+                    style: style,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isCollapsed: true,
+                      contentPadding: EdgeInsets.all(4),
                     ),
+                    onSave: (_) => true,
                   ),
-                  SizedBox(
-                    width: 200,
-                    child: ScopedLazyTextField(
-                      cellId: 'b',
-                      text: 'cell-b',
-                      style: style,
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        isCollapsed: true,
-                        contentPadding: EdgeInsets.all(4),
-                      ),
-                      onSave: (_) => true,
+                ),
+                SizedBox(
+                  width: 200,
+                  child: ScopedLazyTextField(
+                    cellId: 'b',
+                    text: 'cell-b',
+                    style: style,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isCollapsed: true,
+                      contentPadding: EdgeInsets.all(4),
                     ),
+                    onSave: (_) => true,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-        );
+        ),
+      );
 
-        await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface('a')));
-        await tester.pump();
-        expect(editController.isEditing('a'), isTrue);
-        expect(editController.activeIds, ['a']);
+      await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface('a')));
+      await tester.pump();
+      expect(editController.isEditing('a'), isTrue);
+      expect(editController.activeIds, ['a']);
 
-        await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface('b')));
-        await tester.pump();
-        await tester.pump();
+      await tester.tap(find.byKey(LazyTextFieldKeys.staticSurface('b')));
+      await tester.pump();
+      await tester.pump();
 
-        expect(editController.isEditing('a'), isFalse);
-        expect(editController.isEditing('b'), isTrue);
-        expect(editController.activeIds, ['b']);
-        expect(
-          find.byKey(LazyTextFieldKeys.editorSurface('b')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(LazyTextFieldKeys.editorSurface('a')),
-          findsNothing,
-        );
-      },
-    );
+      expect(editController.isEditing('a'), isFalse);
+      expect(editController.isEditing('b'), isTrue);
+      expect(editController.activeIds, ['b']);
+      expect(find.byKey(LazyTextFieldKeys.editorSurface('b')), findsOneWidget);
+      expect(find.byKey(LazyTextFieldKeys.editorSurface('a')), findsNothing);
+    });
 
     testWidgets(
       'unmounting an active scoped cell stops editing (virtualized dispose)',
@@ -456,9 +450,7 @@ void main() {
     testWidgets(
       'Escape cancels; Enter/Ctrl+Enter/Ctrl+S/IME submit save once',
       (tester) async {
-        Future<void> expectSaveFrom(
-          Future<void> Function() trigger,
-        ) async {
+        Future<void> expectSaveFrom(Future<void> Function() trigger) async {
           final saved = <String>[];
           await pumpStateful(
             tester,

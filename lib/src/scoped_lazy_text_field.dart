@@ -271,7 +271,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   }
 
   Future<void> _save(String value) async {
-    if (_saveInFlight || !(_editController?.isEditing(widget.cellId) ?? false)) {
+    if (_saveInFlight ||
+        !(_editController?.isEditing(widget.cellId) ?? false)) {
       return;
     }
     _saveInFlight = true;

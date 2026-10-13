@@ -60,9 +60,7 @@ void main() {
       textDirection: textDirection,
       textScaler: textScaler,
     );
-    return math
-        .max(minHeight, textHeight + padding.vertical)
-        .ceilToDouble();
+    return math.max(minHeight, textHeight + padding.vertical).ceilToDouble();
   }
 
   test('overflow matches natural height at the final reserved text width', () {
@@ -95,8 +93,7 @@ void main() {
                     minHeight: minHeight,
                     singleLine: false,
                   );
-                  final bounded =
-                      maxHeight != null && maxHeight.isFinite;
+                  final bounded = maxHeight != null && maxHeight.isFinite;
                   final expectedOverflow =
                       bounded && expectedNatural > maxHeight;
 
@@ -112,10 +109,7 @@ void main() {
                   );
                   if (bounded) {
                     expect(layout.height, lessThanOrEqualTo(maxHeight));
-                    expect(
-                      layout.reservedScrollbarWidth,
-                      gutter,
-                    );
+                    expect(layout.reservedScrollbarWidth, gutter);
                   } else {
                     expect(layout.reservedScrollbarWidth, 0);
                     expect(layout.height, expectedNatural);
@@ -243,45 +237,41 @@ void main() {
     },
   );
 
-  test(
-    'natural text height is monotonic as available width decreases',
-    () {
-      const padding = EdgeInsets.fromLTRB(3, 4, 5, 6);
-      final style = styleFor(10);
-      const text =
-          'word word word word word word word word word word word word';
-      final sampleWidths = <double>[200, 160, 120, 90, 60, 40, 20];
+  test('natural text height is monotonic as available width decreases', () {
+    const padding = EdgeInsets.fromLTRB(3, 4, 5, 6);
+    final style = styleFor(10);
+    const text = 'word word word word word word word word word word word word';
+    final sampleWidths = <double>[200, 160, 120, 90, 60, 40, 20];
 
-      var previousHeight = -1.0;
-      for (final width in sampleWidths) {
-        final layout = LazyTextFieldLayout.compute(
-          text: text,
-          width: width,
-          padding: padding,
-          singleLine: false,
-          style: style,
-          maxHeight: null,
-          scrollbarGutter: 12,
-        );
-        expect(layout.reservedScrollbarWidth, 0);
-        final height = naturalHeightAt(
-          text: text,
-          style: style,
-          textLayoutWidth: layout.textLayoutWidth,
-          padding: padding,
-          minHeight: 0,
-          singleLine: false,
-        );
-        expect(layout.height, height);
-        expect(
-          height,
-          greaterThanOrEqualTo(previousHeight),
-          reason: 'width=$width height=$height previous=$previousHeight',
-        );
-        previousHeight = height;
-      }
-    },
-  );
+    var previousHeight = -1.0;
+    for (final width in sampleWidths) {
+      final layout = LazyTextFieldLayout.compute(
+        text: text,
+        width: width,
+        padding: padding,
+        singleLine: false,
+        style: style,
+        maxHeight: null,
+        scrollbarGutter: 12,
+      );
+      expect(layout.reservedScrollbarWidth, 0);
+      final height = naturalHeightAt(
+        text: text,
+        style: style,
+        textLayoutWidth: layout.textLayoutWidth,
+        padding: padding,
+        minHeight: 0,
+        singleLine: false,
+      );
+      expect(layout.height, height);
+      expect(
+        height,
+        greaterThanOrEqualTo(previousHeight),
+        reason: 'width=$width height=$height previous=$previousHeight',
+      );
+      previousHeight = height;
+    }
+  });
 
   test('overflow agreement is stable under text scaling', () {
     for (final scale in <double>[0.85, 1.0, 1.25, 1.5, 2.0]) {
