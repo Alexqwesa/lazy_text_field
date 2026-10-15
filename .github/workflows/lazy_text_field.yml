@@ -24,6 +24,10 @@ jobs:
   test:
     name: Flutter ${{ matrix.name }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Codecov OIDC tokenless upload on public repos.
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -61,3 +65,15 @@ jobs:
           name: coverage-lcov-${{ matrix.name }}
           path: coverage/lcov.info
           if-no-files-found: error
+
+      - name: Upload coverage to Codecov
+        if: matrix.name == 'stable'
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage/lcov.info
+          flags: flutter
+          name: flutter-stable
+          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
+          fail_ci_if_error: false
+
