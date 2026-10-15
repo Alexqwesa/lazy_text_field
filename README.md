@@ -2,6 +2,8 @@
 
 [![Tests](https://github.com/Alexqwesa/lazy_text_field/actions/workflows/lazy_text_field.yml/badge.svg)](https://github.com/Alexqwesa/lazy_text_field/actions/workflows/lazy_text_field.yml)
 [![pub package](https://img.shields.io/pub/v/lazy_text_field.svg)](https://pub.dev/packages/lazy_text_field)
+[![pub points](https://img.shields.io/pub/points/lazy_text_field)](https://pub.dev/packages/lazy_text_field/score)
+[![Live demo](https://img.shields.io/badge/live%20demo-open-blue)](https://alexqwesa.github.io/lazy_text_field/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 Lazy Material text fields for large Flutter tables and grids.
