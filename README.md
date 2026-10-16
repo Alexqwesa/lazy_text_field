@@ -122,10 +122,12 @@ regions.
 
 **Validation errors**
 
-`InputDecoration.errorText` and `InputDecoration.error` are not supported.
-They are the only decoration slots treated as layout-unstable today; debug
-builds assert if they are set, and they are stripped before the decorator
-mounts.
+`InputDecoration.errorText` and `InputDecoration.error` are not supported
+(including empty `errorText: ''`). They are the only decoration slots treated
+as known layout-unstable today; debug builds assert if they are set, and they
+are stripped before the decorator mounts. `LazyTextField.isDecorationLayoutStable`
+checks those slots only — it cannot prove that custom decoration widgets keep
+stable intrinsic sizes across the mode switch.
 
 Use `LazyTextField.errorMessage` instead. It displays validation errors in an
 overlay without changing the field's layout. Keep `onSave` as the commit gate:

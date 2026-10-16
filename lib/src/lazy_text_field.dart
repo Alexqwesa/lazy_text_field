@@ -410,15 +410,17 @@ class LazyTextField extends StatefulWidget {
     );
   }
 
-  /// Whether [decoration] avoids layout-unstable [InputDecoration] slots.
+  /// Whether [decoration] avoids known layout-unstable [InputDecoration] slots.
   ///
-  /// Returns false when [InputDecoration.errorText] is non-empty or
-  /// [InputDecoration.error] is non-null. Other decoration features are treated
-  /// as layout-stable when kept geometry-equivalent across the mode switch.
+  /// Returns false when [InputDecoration.errorText] is non-null (including
+  /// `''`) or [InputDecoration.error] is non-null. This does **not** prove that
+  /// arbitrary custom decoration widgets keep stable intrinsics across the
+  /// mode switch — only that the documented unsupported error slots are
+  /// absent. Other features are treated as layout-stable when kept
+  /// geometry-equivalent across display and editing.
   static bool isDecorationLayoutStable(InputDecoration? decoration) {
     if (decoration == null) return true;
-    final errorText = decoration.errorText;
-    return (errorText == null || errorText.isEmpty) && decoration.error == null;
+    return decoration.errorText == null && decoration.error == null;
   }
 
   /// Returns the undecorated text-viewport height for a given [width].
@@ -545,9 +547,9 @@ class _LazyTextFieldState extends State<LazyTextField> {
     assert(
       LazyTextField.isDecorationLayoutStable(widget.decoration),
       'LazyTextField: InputDecoration.errorText / error are layout-unstable '
-      '(they change field height across the display/edit switch). '
-      'Use errorMessage for validation feedback and keep onSave as the '
-      'commit gate.',
+      '(including errorText: \'\'; they change field height across the '
+      'display/edit switch). Use errorMessage for validation feedback and '
+      'keep onSave as the commit gate.',
     );
   }
 
@@ -814,9 +816,11 @@ class _LazyTextFieldState extends State<LazyTextField> {
       ).remainingTextFieldCharacterCount(remaining);
     }
 
+    // Style the counter in the error color when over maxLength, but never
+    // inject errorText — that slot is unsupported and would break the
+    // no-layout-jump promise (and trip the stable-decoration assert).
     if (maxLength > 0 && currentLength > maxLength) {
       effective = effective.copyWith(
-        errorText: effective.errorText ?? '',
         counterStyle:
             effective.errorStyle ??
             theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
@@ -2031,8 +2035,8 @@ double _editableTextGutter(double cursorWidth) {
 /// [InputDecoration.copyWith] cannot clear those fields with `null` because it
 /// uses `errorText ?? this.errorText`.
 InputDecoration _withoutErrorSlot(InputDecoration decoration) {
-  if ((decoration.errorText == null || decoration.errorText!.isEmpty) &&
-      decoration.error == null) {
+  // Any non-null errorText (including '') can activate the error slot.
+  if (decoration.errorText == null && decoration.error == null) {
     return decoration;
   }
   return InputDecoration(
