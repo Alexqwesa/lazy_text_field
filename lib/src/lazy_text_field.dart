@@ -200,6 +200,13 @@ class LazyTextField extends StatefulWidget {
   ///
   /// Keep layout-affecting properties equivalent across the mode switch.
   /// Use [InputDecoration.contentPadding] to control text padding.
+  ///
+  /// Most [InputDecoration] features are supported when their geometry does not
+  /// change between display and editing (borders, fill, labels, hints,
+  /// helpers, counters, icons, padding, density, constraints, themes).
+  /// [InputDecoration.errorText] and [InputDecoration.error] are unsupported —
+  /// debug builds assert (see [isDecorationLayoutStable]) and those slots are
+  /// stripped before the decorator mounts. Use [errorMessage] instead.
   final InputDecoration? decoration;
 
   /// Minimum text viewport height.
@@ -403,6 +410,17 @@ class LazyTextField extends StatefulWidget {
     );
   }
 
+  /// Whether [decoration] avoids layout-unstable [InputDecoration] slots.
+  ///
+  /// Returns false when [InputDecoration.errorText] is non-empty or
+  /// [InputDecoration.error] is non-null. Other decoration features are treated
+  /// as layout-stable when kept geometry-equivalent across the mode switch.
+  static bool isDecorationLayoutStable(InputDecoration? decoration) {
+    if (decoration == null) return true;
+    final errorText = decoration.errorText;
+    return (errorText == null || errorText.isEmpty) && decoration.error == null;
+  }
+
   /// Returns the undecorated text-viewport height for a given [width].
   ///
   /// This measures only the text surface for [padding], style, and overflow
@@ -478,7 +496,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
     super.initState();
     _syncControllerListener();
     _syncFocusNodeListener();
-    _debugAssertNoDecorationErrorText();
+    _debugAssertStableDecoration();
     _scheduleSyncErrorPopup();
   }
 
@@ -487,7 +505,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
     super.didUpdateWidget(oldWidget);
     _syncControllerListener();
     _syncFocusNodeListener();
-    _debugAssertNoDecorationErrorText();
+    _debugAssertStableDecoration();
     _scheduleSyncErrorPopup();
 
     final focusNode = widget.focusNode;
@@ -523,15 +541,13 @@ class _LazyTextFieldState extends State<LazyTextField> {
     return explicit;
   }
 
-  void _debugAssertNoDecorationErrorText() {
-    final decoration = widget.decoration;
+  void _debugAssertStableDecoration() {
     assert(
-      decoration == null ||
-          ((decoration.errorText == null || decoration.errorText!.isEmpty) &&
-              decoration.error == null),
-      'LazyTextField does not support InputDecoration.errorText / error '
-      'because they change field height. Use errorMessage for validation '
-      'feedback, and keep onSave as the commit gate.',
+      LazyTextField.isDecorationLayoutStable(widget.decoration),
+      'LazyTextField: InputDecoration.errorText / error are layout-unstable '
+      '(they change field height across the display/edit switch). '
+      'Use errorMessage for validation feedback and keep onSave as the '
+      'commit gate.',
     );
   }
 

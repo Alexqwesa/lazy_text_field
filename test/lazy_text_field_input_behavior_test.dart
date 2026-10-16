@@ -226,9 +226,64 @@ void main() {
 
       final exception = tester.takeException();
       expect(exception, isA<AssertionError>());
+      expect('$exception', contains('layout-unstable'));
+      expect('$exception', contains('errorText'));
+    });
+
+    testWidgets('supported decorations do not trip the stable-decoration assert', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _InputApp(
+          child: SizedBox(
+            width: 200,
+            child: LazyTextField(
+              cellId: 'supported-decoration',
+              text: 'value',
+              isEditing: false,
+              style: style,
+              decoration: const InputDecoration(
+                filled: true,
+                border: OutlineInputBorder(),
+                labelText: 'Label',
+                hintText: 'Hint',
+                helperText: 'Helper',
+                counterText: '3/10',
+                prefixIcon: Icon(Icons.notes),
+                suffixIcon: Icon(Icons.check),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              onStartEditing: () {},
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
       expect(
-        '$exception',
-        contains('does not support InputDecoration.errorText'),
+        LazyTextField.isDecorationLayoutStable(
+          const InputDecoration(
+            labelText: 'Label',
+            helperText: 'Helper',
+            counterText: '1',
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        LazyTextField.isDecorationLayoutStable(
+          const InputDecoration(errorText: 'bad'),
+        ),
+        isFalse,
+      );
+      expect(
+        LazyTextField.isDecorationLayoutStable(
+          InputDecoration(error: const Text('bad')),
+        ),
+        isFalse,
       );
     });
 
