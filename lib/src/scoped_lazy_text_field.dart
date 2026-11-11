@@ -31,6 +31,8 @@ class ScopedLazyTextField extends StatefulWidget {
     this.decoration = const InputDecoration(),
     this.minHeight = 0,
     this.maxHeight,
+    this.editingMaxHeight,
+    this.onEditingExtraHeightChanged,
     this.scrollbarGutter = 12,
     this.scrollbarThickness = 6,
     this.scrollbarAlignment = LazyTextField.defaultScrollbarAlignment,
@@ -113,16 +115,21 @@ class ScopedLazyTextField extends StatefulWidget {
   /// Native Material decoration shared by read-only and editing modes.
   final InputDecoration? decoration;
 
-  /// Minimum text viewport height.
-  ///
-  /// Set this to the same finite value as [maxHeight] to activate fixed-height
-  /// sizing for uniform rows.
+  /// {@macro lazy_text_field.minHeight}
   final double minHeight;
 
-  /// Maximum text viewport height before vertical overflow is clipped.
+  /// {@macro lazy_text_field.maxHeight}
   final double? maxHeight;
 
-  /// Width reserved for the package scrollbar in bounded edit mode.
+  /// {@macro lazy_text_field.editingMaxHeight}
+  final double? editingMaxHeight;
+
+  /// {@macro lazy_text_field.onEditingExtraHeightChanged}
+  final ValueChanged<double>? onEditingExtraHeightChanged;
+
+  /// Width reserved for the editor's scrollbar when [maxHeight] is finite.
+  ///
+  /// Reserved in both modes, so read-only and editing text wrap the same way.
   final double scrollbarGutter;
 
   /// Thickness of the package scrollbar thumb.
@@ -254,6 +261,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       decoration: widget.decoration,
       minHeight: widget.minHeight,
       maxHeight: widget.maxHeight,
+      editingMaxHeight: widget.editingMaxHeight,
+      onEditingExtraHeightChanged: widget.onEditingExtraHeightChanged,
       scrollbarGutter: widget.scrollbarGutter,
       scrollbarThickness: widget.scrollbarThickness,
       scrollbarAlignment: widget.scrollbarAlignment,

@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `LazyTextFieldEditController.onSavesSettled` (`LazyTextFieldSavesSettled`)
   and `whenSavesSettled()`: signal when the save queue becomes empty, with
   saved/failed counts.
+- `editingMaxHeight` and `onEditingExtraHeightChanged` on `LazyTextField`,
+  `StatefulLazyTextField`, and `ScopedLazyTextField`: the editor can grow
+  beyond the read-only `maxHeight`, and the field reports the extra height
+  (measured by its own layout) so a grid can grow the row while it edits.
 
 ## [2.0.2] - 2026-10-13
 

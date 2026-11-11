@@ -397,6 +397,66 @@ Each mounted lazy field caches its viewport layout per width and invalidates the
 cache only when text or relevant layout inputs change. Uniform rows with equal
 `minHeight` and `maxHeight` bypass that text measurement entirely during sizing.
 
+### How the height parameters relate
+
+All heights are for the text viewport: the text area inside the decoration.
+
+| Mode      | Viewport height                                         | Taller text |
+|-----------|---------------------------------------------------------|-------------|
+| read-only | text height, clamped to `minHeight`..`maxHeight`        | clipped, overflow marker |
+| editing   | text height, clamped to `minHeight`..`editingMaxHeight` | scrolls     |
+
+- `editingMaxHeight` defaults to `maxHeight`, so without it both modes use the
+  same limits (the 2.0 behavior).
+- `editingMaxHeight: double.infinity` means no limit while editing: the editor
+  grows with all of its text and never scrolls; read-only stays clipped.
+- `maxHeight: null` means no limit: the viewport grows with its text in both
+  modes and `editingMaxHeight` is ignored.
+- `onEditingExtraHeightChanged` reports `editorHeight - maxHeight` while
+  editing (0 otherwise).
+
+Example: `minHeight: 20, maxHeight: 20, editingMaxHeight: 60`
+
+| Text needs | Read-only viewport | Editor viewport | Reported extra |
+|------------|--------------------|-----------------|----------------|
+| 10 px      | 20 px              | 20 px           | 0              |
+| 40 px      | 20 px (clipped)    | 40 px           | 20             |
+| 100 px     | 20 px (clipped)    | 60 px (scrolls) | 40             |
+
+With `editingMaxHeight: double.infinity`, the last row becomes an editor of
+100 px that does not scroll, reporting 80.
+
+### Growing a row while a cell edits
+
+Grid rows usually have a fixed height that clips long text. To let the editor
+grow with its text while it is open, set `editingMaxHeight` above `maxHeight`
+and grow the row by the amount reported in `onEditingExtraHeightChanged`:
+
+```dart
+ScopedLazyTextField(
+  cellId: cellId,
+  text: value,
+  minHeight: twoLines,
+  maxHeight: twoLines,                       // read-only clip
+  editingMaxHeight: screenHeight * 0.6,      // editor may grow up to this
+  onEditingExtraHeightChanged: (extra) =>    // editorHeight - maxHeight
+      grid.setExtraRowHeight(rowKey, cellId, extra),
+  onCommit: save,
+);
+```
+
+- `extra` is measured by the field's own layout at its real width, so the
+  caller does not measure text.
+- It is reported after the frame and only when it changes: it grows and
+  shrinks as the user types, and goes back to 0 when editing stops or the
+  cell is disposed.
+- Pass `editingMaxHeight: double.infinity` to let the editor grow with all of
+  its text and never scroll. Only do this when the row grows too; otherwise
+  the extra lines are clipped and cannot be scrolled to.
+- The scrollbar gutter stays reserved in both modes (also with
+  `double.infinity`), so wrapping does not change when the editor grows.
+- If several cells in a row can edit, keep the largest `extra` per row.
+
 ## Migrating from 1.x
 
 - Replace `LazyInputDecoration` with `InputDecoration`.

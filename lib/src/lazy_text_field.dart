@@ -100,6 +100,8 @@ class LazyTextField extends StatefulWidget {
     this.decoration = const InputDecoration(),
     this.minHeight = 0,
     this.maxHeight,
+    this.editingMaxHeight,
+    this.onEditingExtraHeightChanged,
     this.scrollbarGutter = 12,
     this.scrollbarThickness = 6,
     this.scrollbarAlignment = LazyTextField.defaultScrollbarAlignment,
@@ -146,7 +148,11 @@ class LazyTextField extends StatefulWidget {
     this.contextMenuBuilder,
     this.mouseCursor,
   }) : assert(!isEditing || controller != null),
-       assert(!isEditing || focusNode != null);
+       assert(!isEditing || focusNode != null),
+       assert(
+         editingMaxHeight == null || editingMaxHeight >= 0,
+         'editingMaxHeight must not be negative.',
+       );
 
   /// Stable id used for keys and test hooks.
   final String cellId;
@@ -209,18 +215,84 @@ class LazyTextField extends StatefulWidget {
   /// stripped before the decorator mounts. Use [errorMessage] instead.
   final InputDecoration? decoration;
 
-  /// Minimum text viewport height.
+  /// {@template lazy_text_field.minHeight}
+  /// Smallest height of the text viewport, in both modes.
   ///
-  /// Set this to the same finite value as [maxHeight] to activate the
-  /// fixed-height fast path, which skips text measurement during sizing.
+  /// The text viewport is the text area inside the decoration (padding,
+  /// borders and labels come on top). It is never shorter than this, even
+  /// for empty text.
+  ///
+  /// How the height parameters work together:
+  ///
+  /// | Mode      | Viewport height                                          |
+  /// |-----------|----------------------------------------------------------|
+  /// | read-only | text height, clamped to [minHeight]..[maxHeight]         |
+  /// | editing   | text height, clamped to [minHeight]..[editingMaxHeight]  |
+  ///
+  /// [editingMaxHeight] defaults to [maxHeight], so without it both modes use
+  /// the same limits. With a null [maxHeight] the viewport grows with its
+  /// text in both modes.
+  ///
+  /// Set [minHeight] and [maxHeight] to the same finite value for uniform
+  /// rows; that read-only height skips text measurement entirely.
+  /// {@endtemplate}
   final double minHeight;
 
-  /// Maximum text viewport height before vertical overflow is clipped.
+  /// {@template lazy_text_field.maxHeight}
+  /// Largest height of the text viewport in read-only mode, and while editing
+  /// unless [editingMaxHeight] is set.
   ///
-  /// Set this to the same finite value as [minHeight] for uniform table rows.
+  /// Taller text is clipped in read-only mode (with the overflow marker) and
+  /// scrolls inside the editor, which reserves [scrollbarGutter] for its
+  /// scrollbar in both modes so text wraps the same way.
+  ///
+  /// Null means no limit: the viewport grows with its text and no scrollbar
+  /// gutter is reserved.
+  /// {@endtemplate}
   final double? maxHeight;
 
-  /// Width reserved for the package scrollbar in bounded edit mode.
+  /// {@template lazy_text_field.editingMaxHeight}
+  /// Largest height of the text viewport while editing; defaults to
+  /// [maxHeight].
+  ///
+  /// Set it above [maxHeight] to let the editor grow with its text past the
+  /// read-only limit, then scroll beyond [editingMaxHeight]. Example:
+  /// `minHeight: 20, maxHeight: 20, editingMaxHeight: 60` shows a fixed
+  /// 20 px viewport while reading, and an editor that grows from 20 to 60 px
+  /// as lines are typed. Report the growth to the surrounding row with
+  /// [onEditingExtraHeightChanged].
+  ///
+  /// Pass `double.infinity` to let the editor grow with all of its text and
+  /// never scroll. The scrollbar gutter stays reserved, so the text still
+  /// wraps as in read-only mode. Only do this when the surrounding row or
+  /// cell grows too; otherwise lines below the cell are clipped and cannot be
+  /// scrolled to.
+  ///
+  /// Used only when [maxHeight] is finite. Values below [maxHeight] are
+  /// treated as [maxHeight].
+  /// {@endtemplate}
+  final double? editingMaxHeight;
+
+  /// {@template lazy_text_field.onEditingExtraHeightChanged}
+  /// Reports how much taller than [maxHeight] the editor's viewport currently
+  /// is: `editorHeight - maxHeight`, from 0 up to
+  /// `editingMaxHeight - maxHeight` (no upper limit with `double.infinity`).
+  ///
+  /// With the [editingMaxHeight] example (`maxHeight: 20,
+  /// editingMaxHeight: 60`), text that needs 40 px reports 20, and text that
+  /// needs 60 px or more reports 40. Add the value to the height of the row
+  /// or cell that holds the field so the grown editor fits.
+  ///
+  /// Measured by the field's own layout at its real width. Called after the
+  /// frame and only when the value changes; called with 0 when editing stops
+  /// or the field is disposed. Always 0 without [editingMaxHeight] or with a
+  /// null [maxHeight].
+  /// {@endtemplate}
+  final ValueChanged<double>? onEditingExtraHeightChanged;
+
+  /// Width reserved for the editor's scrollbar when [maxHeight] is finite.
+  ///
+  /// Reserved in both modes, so read-only and editing text wrap the same way.
   final double scrollbarGutter;
 
   /// Thickness of the package scrollbar thumb.
@@ -491,6 +563,9 @@ class _LazyTextFieldState extends State<LazyTextField> {
       OverlayPortalController();
   bool _isHovering = false;
   String? _lastLayoutText;
+  double _reportedExtraHeight = 0;
+  double _pendingExtraHeight = 0;
+  bool _extraHeightReportScheduled = false;
   LazyTextFieldStartEditDetails? _lastStartEditDetails;
 
   @override
@@ -527,8 +602,53 @@ class _LazyTextFieldState extends State<LazyTextField> {
     });
   }
 
+  double? get _effectiveMaxHeight {
+    final maxHeight = widget.maxHeight;
+    final editingMaxHeight = widget.editingMaxHeight;
+    if (!widget.isEditing ||
+        editingMaxHeight == null ||
+        maxHeight == null ||
+        !maxHeight.isFinite) {
+      return maxHeight;
+    }
+    // A finite cap keeps the layout bounded, so the scrollbar gutter stays
+    // reserved and the text wraps as in read-only mode; it is never reached.
+    if (!editingMaxHeight.isFinite) return double.maxFinite;
+    return math.max(maxHeight, editingMaxHeight);
+  }
+
+  void _onViewportHeight(double height) {
+    final maxHeight = widget.maxHeight;
+    final extra = widget.isEditing && maxHeight != null && maxHeight.isFinite
+        ? math.max(0.0, height - maxHeight)
+        : 0.0;
+    _reportExtraHeight(extra);
+  }
+
+  // Layout must not call back into the tree, so report after the frame.
+  void _reportExtraHeight(double extra) {
+    _pendingExtraHeight = extra;
+    final report = widget.onEditingExtraHeightChanged;
+    if (_extraHeightReportScheduled || report == null) return;
+    _extraHeightReportScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _extraHeightReportScheduled = false;
+      if (_pendingExtraHeight == _reportedExtraHeight) return;
+      _reportedExtraHeight = _pendingExtraHeight;
+      // After dispose, report through the callback captured at scheduling.
+      (mounted ? widget.onEditingExtraHeightChanged : report)?.call(
+        _reportedExtraHeight,
+      );
+    });
+    // Make sure a frame runs, for example when reporting from dispose.
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
   @override
   void dispose() {
+    if (_reportedExtraHeight != 0 || _pendingExtraHeight != 0) {
+      _reportExtraHeight(0);
+    }
     _listenedController?.removeListener(_onControllerChanged);
     _listenedFocusNode?.removeListener(_onFocusChanged);
     if (widget.scrollController == null) {
@@ -633,7 +753,10 @@ class _LazyTextFieldState extends State<LazyTextField> {
       textAlignVertical: widget.textAlignVertical,
       textDirection: widget.textDirection,
       minHeight: widget.minHeight,
-      maxHeight: widget.maxHeight,
+      maxHeight: _effectiveMaxHeight,
+      onViewportHeight: widget.onEditingExtraHeightChanged == null
+          ? null
+          : _onViewportHeight,
       scrollbarGutter: widget.scrollbarGutter,
       scrollbarThickness: widget.scrollbarThickness,
       scrollbarAlignment: widget.scrollbarAlignment,
@@ -919,6 +1042,7 @@ class _LazyTextFieldContent extends StatelessWidget {
     this.textAlignVertical,
     this.textDirection,
     this.maxHeight,
+    this.onViewportHeight,
     this.onReadOnlyOverflowToggle,
     this.overflowMarkerColor,
     this.expandedOverflowMarkerColor,
@@ -964,6 +1088,7 @@ class _LazyTextFieldContent extends StatelessWidget {
   final TextDirection? textDirection;
   final double minHeight;
   final double? maxHeight;
+  final ValueChanged<double>? onViewportHeight;
   final double scrollbarGutter;
   final double scrollbarThickness;
   final AlignmentGeometry scrollbarAlignment;
@@ -1022,6 +1147,7 @@ class _LazyTextFieldContent extends StatelessWidget {
       textScaler: textScaler,
       minHeight: minHeight,
       maxHeight: maxHeight,
+      onViewportHeight: onViewportHeight,
       reservedScrollbarWidth: gutter,
       reservedTrailingWidth: reservedTrailingWidth,
       editableTextGutter: _editableTextGutter(cursorWidth),
@@ -1215,6 +1341,7 @@ class _TextViewportSizer extends SingleChildRenderObjectWidget {
     required this.editableTextGutter,
     this.strutStyle,
     this.maxHeight,
+    this.onViewportHeight,
     required super.child,
   });
 
@@ -1226,6 +1353,7 @@ class _TextViewportSizer extends SingleChildRenderObjectWidget {
   final TextScaler textScaler;
   final double minHeight;
   final double? maxHeight;
+  final ValueChanged<double>? onViewportHeight;
   final double reservedScrollbarWidth;
   final double reservedTrailingWidth;
   final double editableTextGutter;
@@ -1241,6 +1369,7 @@ class _TextViewportSizer extends SingleChildRenderObjectWidget {
       textScaler: textScaler,
       minHeight: minHeight,
       maxHeight: maxHeight,
+      onViewportHeight: onViewportHeight,
       reservedScrollbarWidth: reservedScrollbarWidth,
       reservedTrailingWidth: reservedTrailingWidth,
       editableTextGutter: editableTextGutter,
@@ -1261,6 +1390,7 @@ class _TextViewportSizer extends SingleChildRenderObjectWidget {
       ..textScaler = textScaler
       ..minHeight = minHeight
       ..maxHeight = maxHeight
+      ..onViewportHeight = onViewportHeight
       ..reservedScrollbarWidth = reservedScrollbarWidth
       ..reservedTrailingWidth = reservedTrailingWidth
       ..editableTextGutter = editableTextGutter;
@@ -1277,6 +1407,7 @@ class _RenderTextViewportSizer extends RenderProxyBox {
     required TextScaler textScaler,
     required double minHeight,
     required double? maxHeight,
+    required this.onViewportHeight,
     required double reservedScrollbarWidth,
     required double reservedTrailingWidth,
     required double editableTextGutter,
@@ -1304,6 +1435,9 @@ class _RenderTextViewportSizer extends RenderProxyBox {
   double _reservedTrailingWidth;
   double _editableTextGutter;
   double? _cachedLayoutWidth;
+
+  /// Receives the desired viewport height after each layout.
+  ValueChanged<double>? onViewportHeight;
   LazyTextFieldLayout? _cachedLayout;
 
   void _invalidateLayout() {
@@ -1435,7 +1569,9 @@ class _RenderTextViewportSizer extends RenderProxyBox {
   @override
   void performLayout() {
     final width = _widthFor(constraints);
-    size = constraints.constrain(Size(width, _layoutFor(width).height));
+    final height = _layoutFor(width).height;
+    size = constraints.constrain(Size(width, height));
+    onViewportHeight?.call(height);
     // InputDecorator reads this child's size/baseline during its own layout.
     child?.layout(BoxConstraints.tight(size), parentUsesSize: true);
   }

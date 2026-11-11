@@ -93,3 +93,9 @@ or supporting-text rows when editing starts. Use a conventional overlay
 `LazyTextField.computeHeightForWidth` and `LazyTextFieldMetrics` calculate the
 undecorated text-viewport height. Arbitrary `InputDecoration` widget height is
 known only during Flutter layout.
+
+To grow a fixed-height grid row while a cell edits, set `editingMaxHeight`
+(above `maxHeight`, or `double.infinity` for no limit) and add the value from
+`onEditingExtraHeightChanged(extra)` to the row height (largest per row). Do
+not measure editor text with your own `TextPainter`, and do not switch
+`maxHeight` between modes yourself.
