@@ -233,4 +233,44 @@ void main() {
     expect(commits, ['two']);
     await tester.pump();
   });
+
+  group('whenEditingDone', () {
+    testWidgets('completes at once when nothing is editing', (tester) async {
+      final controller = LazyTextFieldEditController();
+      addTearDown(controller.dispose);
+      var done = false;
+      unawaited(controller.whenEditingDone().then((_) => done = true));
+      await tester.pump();
+      expect(done, isTrue);
+    });
+
+    testWidgets('survives a switch and completes when the last editor '
+        'closes', (tester) async {
+      final controller = LazyTextFieldEditController();
+      addTearDown(controller.dispose);
+      await pumpCells(tester, controller, onSaveA: (_) => true);
+      await editA(tester, 'a-draft');
+      var done = false;
+      unawaited(controller.whenEditingDone().then((_) => done = true));
+
+      await tapB(tester);
+      expect(controller.activeIds, ['b']);
+      expect(done, isFalse);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(controller.activeIds, isEmpty);
+      expect(done, isTrue);
+    });
+
+    testWidgets('completes when the controller is disposed', (tester) async {
+      final controller = LazyTextFieldEditController();
+      controller.startEditing(cellId: 'a', initialValue: 'one');
+      var done = false;
+      unawaited(controller.whenEditingDone().then((_) => done = true));
+      controller.dispose();
+      await tester.pump();
+      expect(done, isTrue);
+    });
+  });
 }

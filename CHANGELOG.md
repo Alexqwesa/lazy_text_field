@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`LazyTextFieldSubmitClose.afterSave` / `immediately`), and
   `errorMessageOf`. `onSave` is now optional; provide exactly one of `onSave`
   or `onCommit`.
+- `LazyTextFieldEditController.whenEditingDone()`: completes when no cell is
+  editing; switching cells does not complete it.
+- `LazyTextFieldDraftController.onSavesSettled` (`LazyTextFieldSavesSettled`)
+  and `whenSavesSettled()`: signal when the save queue becomes empty, with
+  saved/failed counts.
 
 ## [2.0.2] - 2026-10-13
 

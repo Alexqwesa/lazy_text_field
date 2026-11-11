@@ -11,6 +11,12 @@ import 'package:lazy_text_field/src/lazy_text_field_edit_controller.dart';
 /// written by earlier saves (for example a row version).
 typedef LazyTextFieldCommit = Future<void> Function(String value);
 
+/// Called when a [LazyTextFieldDraftController]'s queue becomes empty.
+///
+/// [saved] and [failed] count the commits that finished since the queue was
+/// last empty.
+typedef LazyTextFieldSavesSettled = void Function(int saved, int failed);
+
 /// Save state of a [LazyTextFieldDraft].
 enum LazyTextFieldDraftStatus {
   /// Queued or saving.
@@ -111,11 +117,18 @@ class LazyTextFieldDraftController extends LazyTextFieldEditController {
   /// [saveOrder] defaults to [LazyTextFieldSaveOrder.sequential].
   LazyTextFieldDraftController({
     this.saveOrder = LazyTextFieldSaveOrder.sequential,
+    this.onSavesSettled,
     super.switchPolicy,
   });
 
   /// How saves are ordered.
   final LazyTextFieldSaveOrder saveOrder;
+
+  /// Called each time the save queue becomes empty, for example to refresh
+  /// the data once after a burst of saves.
+  ///
+  /// Not called after [dispose].
+  final LazyTextFieldSavesSettled? onSavesSettled;
 
   /// Returns the nearest draft controller, or null when the nearest scope has
   /// none.
@@ -130,11 +143,22 @@ class LazyTextFieldDraftController extends LazyTextFieldEditController {
       <Object, LazyTextFieldDraft>{};
   final Map<Object, Future<bool>> _inFlight = <Object, Future<bool>>{};
   final Map<Object?, Future<void>> _lanes = <Object?, Future<void>>{};
+  final List<Completer<void>> _settledWaiters = <Completer<void>>[];
   int _pendingSaves = 0;
+  int _savedSinceSettle = 0;
+  int _failedSinceSettle = 0;
   bool _disposed = false;
 
   /// Number of commits queued or running.
   int get pendingSaves => _pendingSaves;
+
+  /// Completes when the save queue is empty; immediately if it is.
+  Future<void> whenSavesSettled() {
+    if (_pendingSaves == 0) return Future<void>.value();
+    final waiter = Completer<void>();
+    _settledWaiters.add(waiter);
+    return waiter.future;
+  }
 
   /// The draft for [key], if any.
   LazyTextFieldDraft? draftFor(Object key) => _drafts[key];
@@ -215,9 +239,15 @@ class LazyTextFieldDraftController extends LazyTextFieldEditController {
         }
       } finally {
         _pendingSaves--;
+        if (saved) {
+          _savedSinceSettle++;
+        } else {
+          _failedSinceSettle++;
+        }
         if (identical(_inFlight[key], completer.future)) _inFlight.remove(key);
         if (!_disposed) notifyListeners();
         completer.complete(saved);
+        if (_pendingSaves == 0) _settle();
       }
     });
     _lanes[lane] = tail;
@@ -234,6 +264,19 @@ class LazyTextFieldDraftController extends LazyTextFieldEditController {
   void notifyListeners() {
     if (_disposed) return;
     super.notifyListeners();
+  }
+
+  void _settle() {
+    final saved = _savedSinceSettle;
+    final failed = _failedSinceSettle;
+    _savedSinceSettle = 0;
+    _failedSinceSettle = 0;
+    final waiters = List.of(_settledWaiters);
+    _settledWaiters.clear();
+    for (final waiter in waiters) {
+      waiter.complete();
+    }
+    if (!_disposed) onSavesSettled?.call(saved, failed);
   }
 
   @override

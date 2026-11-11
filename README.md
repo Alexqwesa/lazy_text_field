@@ -170,6 +170,36 @@ read state written by earlier saves (for example a row version).
 | `sequential` (default)          | One commit at a time, in queue order.                                                                             |
 | `perRow`                        | Commits with the same `rowKey` run in order; different rows run in parallel. Cells without `rowKey` share a queue. |
 
+### Refreshing data around edits
+
+Replacing grid rows while a cell is editing disposes its editor and the
+user's unsaved text. Two signals let the host time its refreshes:
+
+- `LazyTextFieldEditController.whenEditingDone()` completes when no cell is
+  editing (immediately if none is). Switching from one cell to another does
+  not complete it. Await it before applying fetched rows; check `activeIds`
+  again afterwards if editing may have restarted.
+- `LazyTextFieldDraftController(onSavesSettled: (saved, failed) { ... })` is
+  called each time the save queue becomes empty, with counts since it was
+  last empty. Refresh once there instead of after every save.
+  `whenSavesSettled()` is the awaitable form.
+
+```dart
+late final drafts = LazyTextFieldDraftController(
+  onSavesSettled: (saved, _) {
+    if (saved > 0) reloadPage();
+  },
+);
+
+Future<List<Row>> fetchPage() async {
+  final rows = await api.fetchPage();
+  while (drafts.activeIds.isNotEmpty) {
+    await drafts.whenEditingDone();
+  }
+  return rows;
+}
+```
+
 ## Decorations support and stability
 
 `LazyTextField` uses Flutter's native `InputDecoration` and keeps the same

@@ -500,4 +500,88 @@ void main() {
       expect(found, isNull);
     });
   });
+
+  group('settle signals', () {
+    testWidgets('onSavesSettled fires once per burst with counts', (
+      tester,
+    ) async {
+      final settled = <(int, int)>[];
+      final controller = LazyTextFieldDraftController(
+        onSavesSettled: (saved, failed) => settled.add((saved, failed)),
+      );
+      addTearDown(controller.dispose);
+      for (final key in ['a', 'b', 'c']) {
+        unawaited(
+          controller.enqueue(
+            key: key,
+            source: 'old',
+            value: 'new-$key',
+            commit: server.commitFor(key),
+          ),
+        );
+      }
+      var settledFuture = false;
+      unawaited(
+        controller.whenSavesSettled().then((_) => settledFuture = true),
+      );
+
+      await tester.pump();
+      server.succeed();
+      await tester.pump();
+      server.fail('nope');
+      await tester.pump();
+      expect(settled, isEmpty);
+      expect(settledFuture, isFalse);
+
+      server.succeed();
+      await tester.pump();
+      expect(settled, [(2, 1)]);
+      expect(settledFuture, isTrue);
+
+      // The next burst starts counting from zero.
+      unawaited(
+        controller.enqueue(
+          key: 'a',
+          source: 'old',
+          value: 'newer-a',
+          commit: server.commitFor('a'),
+        ),
+      );
+      await tester.pump();
+      server.succeed();
+      await tester.pump();
+      expect(settled, [(2, 1), (1, 0)]);
+    });
+
+    testWidgets('whenSavesSettled completes at once when idle', (tester) async {
+      final controller = LazyTextFieldDraftController();
+      addTearDown(controller.dispose);
+      var done = false;
+      unawaited(controller.whenSavesSettled().then((_) => done = true));
+      await tester.pump();
+      expect(done, isTrue);
+    });
+
+    testWidgets('onSavesSettled is not called after dispose', (tester) async {
+      var calls = 0;
+      final controller = LazyTextFieldDraftController(
+        onSavesSettled: (_, _) => calls++,
+      );
+      final waiting = controller.whenSavesSettled();
+      unawaited(
+        controller.enqueue(
+          key: 'k',
+          source: 'old',
+          value: 'new',
+          commit: server.commitFor('k'),
+        ),
+      );
+      await tester.pump();
+      controller.dispose();
+      server.succeed();
+      await tester.pump();
+      await waiting;
+      expect(calls, 0);
+    });
+  });
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:lazy_text_field/src/lazy_text_field.dart';
@@ -39,6 +41,8 @@ class LazyTextFieldEditController extends ChangeNotifier {
   final Map<String, FocusNode> _focusNodes = <String, FocusNode>{};
   final Map<String, LazyTextFieldCommitHandler> _commitHandlers =
       <String, LazyTextFieldCommitHandler>{};
+  Completer<void>? _editingDone;
+  bool _switching = false;
 
   /// Active text controllers keyed by cell id.
   Map<String, TextEditingController> get controllers =>
@@ -59,6 +63,18 @@ class LazyTextFieldEditController extends ChangeNotifier {
 
   /// Returns the active focus node for [cellId], if it is editing.
   FocusNode? focusNodeFor(String cellId) => _focusNodes[cellId];
+
+  /// Completes when no cell is editing; immediately if none is.
+  ///
+  /// Switching from one cell to another does not complete it: the editing
+  /// session continues in the new cell. Use it to defer work that would
+  /// replace the cells under an open editor, such as applying a data
+  /// refresh. Editing can start again afterwards, so check [activeIds] again
+  /// if that matters.
+  Future<void> whenEditingDone() {
+    if (_controllers.isEmpty) return Future<void>.value();
+    return (_editingDone ??= Completer<void>()).future;
+  }
 
   /// Registers [handler] to receive [cellId]'s text when a switch to another
   /// cell closes it under [LazyTextFieldSwitchPolicy.commit].
@@ -91,7 +107,12 @@ class LazyTextFieldEditController extends ChangeNotifier {
     int? textOffset,
   }) {
     if (!allowMultipleActiveEdits) {
-      _switchFrom(cellId);
+      _switching = true;
+      try {
+        _switchFrom(cellId);
+      } finally {
+        _switching = false;
+      }
     }
 
     final existing = _controllers[cellId];
@@ -157,6 +178,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     if (notify) {
       notifyListeners();
     }
+    if (_controllers.isEmpty && !_switching) _completeEditingDone();
     SchedulerBinding.instance.addPostFrameCallback((_) {
       controller?.dispose();
       focusNode?.dispose();
@@ -194,6 +216,12 @@ class LazyTextFieldEditController extends ChangeNotifier {
     }
   }
 
+  void _completeEditingDone() {
+    final done = _editingDone;
+    _editingDone = null;
+    done?.complete();
+  }
+
   void _focusExisting(
     String cellId,
     TextEditingController controller, {
@@ -228,6 +256,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     _controllers.clear();
     _focusNodes.clear();
     _commitHandlers.clear();
+    _completeEditingDone();
     super.dispose();
   }
 }

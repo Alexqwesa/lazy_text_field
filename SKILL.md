@@ -45,6 +45,11 @@ own draft map, save queue, or "return false and close later" logic:
 - `onCommit` runs when its queue turn comes; compute request state such as
   expected versions inside it.
 - Map errors with `errorMessageOf`; Escape discards a failed draft.
+- Refresh once per burst in `onSavesSettled: (saved, failed) {...}` (or
+  await `whenSavesSettled()`), not after every save.
+- Before replacing rows with fetched data, await
+  `whenEditingDone()` (loop while `activeIds` is non-empty); switching cells
+  does not complete it. Do not track your own "editing finished" completer.
 
 ## Direct LazyTextField
 
