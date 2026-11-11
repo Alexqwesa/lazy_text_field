@@ -48,6 +48,10 @@ class ScopedLazyTextField extends StatefulWidget {
 
   /// Primary commit path: return true to accept and exit edit mode, or false
   /// to keep editing (e.g. validation failed).
+  ///
+  /// When the scope's controller uses [LazyTextFieldSwitchPolicy.commit],
+  /// this is also called with the draft when another cell starts editing.
+  /// That editor is already closed, so returning false only skips [onSaved].
   final LazyTextFieldSave onSave;
 
   /// Whether the field should lay out and edit as one line.
@@ -134,6 +138,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   FocusOnKeyEventCallback? _previousHandler;
   int _editEpoch = 0;
   bool _saveInFlight = false;
+  String? _inFlightValue;
+  late final LazyTextFieldCommitHandler _commitHandler = _commitOnSwitch;
 
   @override
   void didUpdateWidget(covariant ScopedLazyTextField oldWidget) {
@@ -161,6 +167,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     final editController = LazyTextFieldControllerScope.of(context);
     if (_editController != editController) {
       _detachKeyboardHandler();
+      _editController?.removeCommitHandler(widget.cellId, _commitHandler);
       _editController = editController;
     }
 
@@ -169,6 +176,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     final isEditing = controller != null && focusNode != null;
     if (isEditing) {
       _attachKeyboardHandler(focusNode);
+      editController.setCommitHandler(widget.cellId, _commitHandler);
     } else {
       _detachKeyboardHandler();
     }
@@ -227,6 +235,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       startEditSelection: widget.startEditSelection,
       textOffset: textOffset,
     );
+    // Register now: a switch can arrive before the rebuild that would do it.
+    editController.setCommitHandler(widget.cellId, _commitHandler);
   }
 
   void _attachKeyboardHandler(FocusNode focusNode) {
@@ -276,14 +286,28 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       return;
     }
     _saveInFlight = true;
+    _inFlightValue = value;
     final epoch = _editEpoch;
     final cellId = widget.cellId;
     final ok = await widget.onSave(value);
     if (!mounted || epoch != _editEpoch || widget.cellId != cellId) return;
     _saveInFlight = false;
+    _inFlightValue = null;
     if (!ok) return;
     _editController?.stopEditing(widget.cellId);
     widget.onSaved?.call(value);
+  }
+
+  /// Called by the controller while it closes this editor for another cell.
+  void _commitOnSwitch(String value) {
+    // A submit of the same text is already running and will call onSaved.
+    if (_saveInFlight && _inFlightValue == value) return;
+    final cellId = widget.cellId;
+    unawaited(() async {
+      final ok = await widget.onSave(value);
+      if (!ok || !mounted || widget.cellId != cellId) return;
+      widget.onSaved?.call(value);
+    }());
   }
 
   void _cancel() {
@@ -295,5 +319,6 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   void _invalidateEditSession() {
     _editEpoch++;
     _saveInFlight = false;
+    _inFlightValue = null;
   }
 }

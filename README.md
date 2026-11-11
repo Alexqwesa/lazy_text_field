@@ -36,7 +36,7 @@ flutter run -d chrome -t lib/main_live_demo.dart
 
 ```yaml
 dependencies:
-  lazy_text_field: ^2.0.2
+  lazy_text_field: ^2.1.0
 ```
 
 ```dart
@@ -91,6 +91,30 @@ for both in read-only mode.
 
 `StatefulLazyTextField` and `ScopedLazyTextField` support
 `startEditSelection`: `beginning`, `end`, `tapPosition`, or `fullSelection`.
+
+### Switching between scoped cells
+
+When a `ScopedLazyTextField` starts editing, the shared
+`LazyTextFieldEditController` closes the other active cells. Its
+`switchPolicy` decides what happens to their unsaved text:
+
+- `LazyTextFieldSwitchPolicy.commit` (default since 2.1.0): the previous
+  cell's `onSave` is called with its text, and the new cell gets focus
+  immediately. The save runs in the background; the previous editor is
+  already closed, so returning `false` only skips `onSaved`.
+- `LazyTextFieldSwitchPolicy.discard`: the previous text is dropped
+  (2.0 behavior).
+
+```dart
+final editController = LazyTextFieldEditController(
+  switchPolicy: LazyTextFieldSwitchPolicy.discard, // opt out of commit
+);
+```
+
+> **Behavior change in 2.1.0:** switching cells used to drop the previous
+> draft. It is now passed to `onSave`. Make `onSave` tolerate being called
+> for a cell that is no longer editing, or pass
+> `LazyTextFieldSwitchPolicy.discard`.
 
 ## Decorations support and stability
 

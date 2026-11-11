@@ -2,12 +2,43 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:lazy_text_field/src/lazy_text_field.dart';
 
+/// What happens to an active edit when another cell starts editing.
+enum LazyTextFieldSwitchPolicy {
+  /// Close the previous editor and drop its unsaved text (2.0 behavior).
+  discard,
+
+  /// Pass the previous editor's text to its registered commit handler, then
+  /// close it. This is the default.
+  ///
+  /// The new cell gets focus immediately; the commit runs in the background.
+  commit,
+}
+
+/// Receives the text of an editor that is being closed because another cell
+/// started editing.
+typedef LazyTextFieldCommitHandler = void Function(String text);
+
 /// Manages lazy controller/focus allocation for many [ScopedLazyTextField]
 /// cells.
 class LazyTextFieldEditController extends ChangeNotifier {
+  /// Creates an edit controller.
+  ///
+  /// [switchPolicy] decides whether switching cells commits or discards the
+  /// previous cell's text. Since 2.1.0 it defaults to
+  /// [LazyTextFieldSwitchPolicy.commit]; pass
+  /// [LazyTextFieldSwitchPolicy.discard] for the 2.0 behavior.
+  LazyTextFieldEditController({
+    this.switchPolicy = LazyTextFieldSwitchPolicy.commit,
+  });
+
+  /// What happens to an active edit when another cell starts editing.
+  final LazyTextFieldSwitchPolicy switchPolicy;
+
   final Map<String, TextEditingController> _controllers =
       <String, TextEditingController>{};
   final Map<String, FocusNode> _focusNodes = <String, FocusNode>{};
+  final Map<String, LazyTextFieldCommitHandler> _commitHandlers =
+      <String, LazyTextFieldCommitHandler>{};
 
   /// Active text controllers keyed by cell id.
   Map<String, TextEditingController> get controllers =>
@@ -29,10 +60,28 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// Returns the active focus node for [cellId], if it is editing.
   FocusNode? focusNodeFor(String cellId) => _focusNodes[cellId];
 
+  /// Registers [handler] to receive [cellId]'s text when a switch to another
+  /// cell closes it under [LazyTextFieldSwitchPolicy.commit].
+  ///
+  /// Only active cells can register. The handler is removed when the cell
+  /// stops editing.
+  void setCommitHandler(String cellId, LazyTextFieldCommitHandler handler) {
+    if (!_controllers.containsKey(cellId)) return;
+    _commitHandlers[cellId] = handler;
+  }
+
+  /// Removes [cellId]'s commit handler if it is still [handler].
+  void removeCommitHandler(String cellId, LazyTextFieldCommitHandler handler) {
+    if (identical(_commitHandlers[cellId], handler)) {
+      _commitHandlers.remove(cellId);
+    }
+  }
+
   /// Starts editing [cellId] and returns its active controller.
   ///
   /// Unless [allowMultipleActiveEdits] is true, other active cells are stopped
-  /// before this one starts editing.
+  /// before this one starts editing. Under [LazyTextFieldSwitchPolicy.commit]
+  /// their text goes to their commit handlers first.
   TextEditingController startEditing({
     required String cellId,
     required String initialValue,
@@ -42,7 +91,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     int? textOffset,
   }) {
     if (!allowMultipleActiveEdits) {
-      stopWhere((id) => id != cellId);
+      _switchFrom(cellId);
     }
 
     final existing = _controllers[cellId];
@@ -96,6 +145,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// still-connected IME cannot write into a disposed [TextEditingController]
   /// when quickly switching cells.
   void stopEditing(String cellId, {bool notify = true}) {
+    _commitHandlers.remove(cellId);
     final controller = _controllers.remove(cellId);
     final focusNode = _focusNodes.remove(cellId);
     if (controller == null && focusNode == null) return;
@@ -125,6 +175,23 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// Stops all active edits.
   void stopAll() {
     stopWhere((_) => true);
+  }
+
+  void _switchFrom(String nextCellId) {
+    for (final cellId in _controllers.keys.toList(growable: false)) {
+      if (cellId == nextCellId) continue;
+      final handler = _commitHandlers[cellId];
+      final text = _controllers[cellId]?.text;
+      try {
+        if (switchPolicy == LazyTextFieldSwitchPolicy.commit &&
+            handler != null &&
+            text != null) {
+          handler(text);
+        }
+      } finally {
+        stopEditing(cellId);
+      }
+    }
   }
 
   void _focusExisting(
@@ -160,6 +227,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     }
     _controllers.clear();
     _focusNodes.clear();
+    _commitHandlers.clear();
     super.dispose();
   }
 }
