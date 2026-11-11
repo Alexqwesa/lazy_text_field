@@ -39,15 +39,31 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// [LazyTextFieldSwitchPolicy.discard] for the 2.0 behavior.
   LazyTextFieldEditController({
     this.switchPolicy = LazyTextFieldSwitchPolicy.commit,
+    this.saveMode = LazyTextFieldSaveMode.immediate,
     this.saveOrder = LazyTextFieldSaveOrder.sequential,
     this.onSavesSettled,
+    this.draftStore,
   });
 
   /// What happens to an active edit when another cell starts editing.
   final LazyTextFieldSwitchPolicy switchPolicy;
 
+  /// When [ScopedLazyTextField.onCommit] cells save.
+  ///
+  /// [LazyTextFieldSaveMode.immediate] (default) saves on submit and on
+  /// switch; [LazyTextFieldSaveMode.deferred] keeps everything as unsaved
+  /// drafts until [saveDrafts].
+  final LazyTextFieldSaveMode saveMode;
+
   /// How [ScopedLazyTextField.onCommit] saves are ordered.
   final LazyTextFieldSaveOrder saveOrder;
+
+  /// Where unsaved, pending, and failed drafts are written so they survive an
+  /// app restart (for example a Hive box); null keeps them in memory only.
+  ///
+  /// Requires [String] draft keys that are unique within the store and
+  /// stable across restarts. Call [loadDrafts] at startup to restore them.
+  final LazyTextFieldDraftStore? draftStore;
 
   /// Called each time the save queue becomes empty, for example to refresh
   /// the data once after a burst of saves.
@@ -117,7 +133,9 @@ class LazyTextFieldEditController extends ChangeNotifier {
   ///
   /// Unless [allowMultipleActiveEdits] is true, other active cells are stopped
   /// before this one starts editing. Under [LazyTextFieldSwitchPolicy.commit]
-  /// their text goes to their commit handlers first.
+  /// their text goes to their commit handlers first, and in
+  /// [LazyTextFieldSaveMode.immediate] unsaved drafts are saved, except the
+  /// one for [draftKey] (default [cellId]), which this editor continues.
   TextEditingController startEditing({
     required String cellId,
     required String initialValue,
@@ -125,6 +143,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     LazyTextFieldStartEditSelection startEditSelection =
         LazyTextFieldStartEditSelection.end,
     int? textOffset,
+    Object? draftKey,
   }) {
     if (!allowMultipleActiveEdits) {
       _switching = true;
@@ -133,6 +152,11 @@ class LazyTextFieldEditController extends ChangeNotifier {
       } finally {
         _switching = false;
       }
+    }
+    if (switchPolicy == LazyTextFieldSwitchPolicy.commit &&
+        saveMode == LazyTextFieldSaveMode.immediate) {
+      // The user moved on: text kept from cells that left the tree is saved.
+      _drafts.flushUnsaved(except: draftKey ?? cellId);
     }
 
     final existing = _controllers[cellId];
@@ -172,7 +196,60 @@ class LazyTextFieldEditController extends ChangeNotifier {
     saveOrder: saveOrder,
     notify: notifyListeners,
     onSettled: onSavesSettled,
+    store: draftStore,
   );
+
+  /// Every draft, by key; filter by [LazyTextFieldDraft.status], for example
+  /// to show how many changes are not saved yet.
+  Map<Object, LazyTextFieldDraft> get drafts => _drafts.drafts;
+
+  /// Keeps [value] as an [LazyTextFieldDraftStatus.unsaved] draft for [key],
+  /// to be saved later by [saver].
+  ///
+  /// [ScopedLazyTextField] uses this when an editor closes without a save
+  /// (its cell left the tree, or [LazyTextFieldSaveMode.deferred]). The text
+  /// is saved by [saveDrafts] or, in [LazyTextFieldSaveMode.immediate], when
+  /// another cell starts editing. **Until then it exists only in memory** (and
+  /// in [draftStore], if set): if neither happens, it is never saved.
+  ///
+  /// Set [notify] to false when calling from [State.dispose].
+  void holdDraft({
+    required Object key,
+    required String source,
+    required String value,
+    required LazyTextFieldDraftSaver saver,
+    bool notify = true,
+  }) => _drafts.hold(
+    key: key,
+    source: source,
+    value: value,
+    saver: saver,
+    notify: notify,
+  );
+
+  /// Registers how to save the draft for [key] later, for example for a
+  /// draft restored by [loadDrafts] once its cell is built again.
+  void setDraftSaver(Object key, LazyTextFieldDraftSaver saver) =>
+      _drafts.setSaver(key, saver);
+
+  /// Saves every [LazyTextFieldDraftStatus.unsaved] and
+  /// [LazyTextFieldDraftStatus.failed] draft, for example from a "Save all"
+  /// button or before leaving a screen.
+  ///
+  /// Without [batch], each draft is saved by its own cell's `onCommit`
+  /// (through the save queue) or `onSave`. Drafts without a known saver (loaded
+  /// from [draftStore] and not shown since) are skipped. With [batch], all of
+  /// them are sent in one call; see [LazyTextFieldBatchCommit].
+  Future<LazyTextFieldSaveDraftsResult> saveDrafts({
+    LazyTextFieldBatchCommit? batch,
+  }) => _drafts.saveDrafts(batch: batch);
+
+  /// Restores the drafts in [draftStore] as unsaved drafts; returns how many
+  /// were restored. Drafts already in memory win.
+  ///
+  /// Call it once at startup. Cells show restored drafts, and register how to
+  /// save them, when they are built.
+  Future<int> loadDrafts() => _drafts.load();
 
   /// Number of commits queued or running.
   int get pendingSaves => _drafts.pendingSaves;

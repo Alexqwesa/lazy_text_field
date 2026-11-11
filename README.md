@@ -114,15 +114,18 @@ final editController = LazyTextFieldEditController(
 );
 ```
 
-The same applies when an editing cell leaves the tree without a submit:
-recycled for another `cellId`, or disposed by a virtualized grid that scrolled
-it away. (Flutter's `ListView` keeps a focused field alive by default, so its
-editor stays open instead.)
+An editing cell that leaves the tree without a submit (recycled for another
+`cellId`, or disposed by a virtualized grid that scrolled it away) is not
+saved: its text is kept as an `unsaved` draft (see
+[Unsaved drafts](#unsaved-drafts-save-all-and-local-storage)). Flutter's
+`ListView` keeps a focused field alive by default, so there the editor simply
+stays open.
 
-> **Behavior change in 2.1.0:** switching cells, recycling an editing cell,
-> or disposing it used to drop the unsaved text. It is now passed to
-> `onSave`. Make `onSave` tolerate being called for a cell that is no longer
-> editing, or pass `LazyTextFieldSwitchPolicy.discard`.
+> **Behavior change in 2.1.0:** switching cells used to drop the unsaved
+> text. It is now passed to `onSave` / `onCommit`, and text of cells that
+> leave the tree is kept as an unsaved draft. Make `onSave` tolerate being
+> called for a cell that is no longer editing, or pass
+> `LazyTextFieldSwitchPolicy.discard`.
 
 ### Background saves with drafts
 
@@ -131,6 +134,7 @@ No extra setup is needed: the scope's controller (your own
 `LazyTextFieldEditController` or the one the scope creates) keeps a *draft*
 of each committed value and shows it after the editor closes:
 
+- **unsaved** when it was kept without saving (see below),
 - **pending** while it is queued or saving,
 - **saved** until the cell's `text` changes (the refreshed value arrives;
   stale refreshes that still return an older value are ignored),
@@ -174,6 +178,107 @@ read state written by earlier saves (for example a row version). Pass
 |---------------------------------|-------------------------------------------------------------------------------------------------------------------|
 | `sequential` (default)          | One commit at a time, in queue order.                                                                             |
 | `perRow`                        | Commits with the same `rowKey` run in order; different rows run in parallel. Cells without `rowKey` share a queue. |
+
+### Unsaved drafts, "Save all", and local storage
+
+An `unsaved` draft is text that was kept but not saved:
+
+- **A cell left the tree while editing.** A virtualized grid disposed it
+  while scrolling, a data refresh replaced it, or it was recycled for another
+  `cellId`. That is not a request to save, so half-typed text is not sent.
+  The cell shows the draft when it is built again, and reopening it continues
+  the text; Escape discards it.
+- **Deferred mode** (below): every change is kept until you save it.
+
+> **Unsaved drafts are not saved on their own.** A draft kept when its cell
+> left the tree is saved when another cell starts editing (in `immediate`
+> mode) or when you call `saveDrafts()`. If the user never edits another cell
+> and the app never calls `saveDrafts()` (for example the screen closes or the
+> app is killed), **the text is never saved**. It lives only in memory, unless
+> you set a `draftStore`. Call `saveDrafts()` before leaving the screen, or
+> check `drafts` for unsaved entries and ask the user.
+
+```dart
+// Before leaving the screen:
+final result = await editController.saveDrafts();
+if (!result.allSaved) showUnsavedChangesDialog();
+
+// Or show how many changes are waiting:
+final waiting = editController.drafts.values.where(
+  (d) => d.status == LazyTextFieldDraftStatus.unsaved,
+).length;
+```
+
+#### Deferred mode: "Save all"
+
+```dart
+final editController = LazyTextFieldEditController(
+  saveMode: LazyTextFieldSaveMode.deferred,
+);
+
+// Save button: each draft through its own cell's onCommit (queued)...
+await editController.saveDrafts();
+
+// ...or all drafts in one request.
+await editController.saveDrafts(
+  batch: (values) async {          // {draftKey: value}
+    final rejected = await api.saveMany(values);
+    return rejected;               // {draftKey: error} for failed drafts
+  },
+);
+```
+
+- In `deferred` mode, Enter, switching cells, and cells leaving the tree only
+  keep `onCommit` text as `unsaved` drafts. Nothing is sent until
+  `saveDrafts()`. `onSave` cells still save on submit and on switch.
+- `saveDrafts()` saves `unsaved` and `failed` drafts, returns
+  `saved` / `failed` / `skipped` counts, and fires `onSavesSettled` once.
+- A batch gets `{draftKey: value}` and returns the errors of drafts that
+  failed (missing or null means saved). If it throws, every draft fails with
+  that error.
+- `immediate` mode (default) also saves unsaved drafts when another cell
+  starts editing.
+
+#### Keeping drafts across restarts (Hive, etc.)
+
+Give the controller a `LazyTextFieldDraftStore`. It writes `unsaved`,
+`pending`, and `failed` drafts, and deletes them once saved or discarded:
+
+```dart
+class HiveDraftStore implements LazyTextFieldDraftStore {
+  HiveDraftStore(this.box);
+  final Box<Map> box;
+
+  @override
+  Iterable<LazyTextFieldStoredDraft> load() => box.values.map(
+    (m) => LazyTextFieldStoredDraft.fromJson(m.cast<String, Object?>()),
+  );
+
+  @override
+  Future<void> put(LazyTextFieldStoredDraft draft) =>
+      box.put(draft.key, draft.toJson());
+
+  @override
+  Future<void> delete(String key) => box.delete(key);
+}
+
+final editController = LazyTextFieldEditController(
+  saveMode: LazyTextFieldSaveMode.deferred,
+  draftStore: HiveDraftStore(box),
+);
+await editController.loadDrafts(); // at startup
+```
+
+- **Draft keys must be `String`s that are unique within the store and stable
+  across restarts** (`draftKey`, default `cellId`). Include the table or
+  screen name, for example `'orders/42/name'`. Debug builds assert on
+  non-`String` keys.
+- Restored drafts come back as `unsaved`, also those that were saving when
+  the app stopped, so they may be sent again. Make the save idempotent.
+- A restored draft is shown, and gets its saver, when its cell is built.
+  `saveDrafts()` skips restored drafts whose cell has not been built yet;
+  `saveDrafts(batch: ...)` includes them.
+- Failure errors are not stored.
 
 ### Refreshing data around edits
 

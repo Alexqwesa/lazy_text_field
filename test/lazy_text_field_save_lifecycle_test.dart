@@ -335,28 +335,96 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('scrolling an edited cell away commits and keeps its text', (
+    testWidgets('scrolling an edited cell away keeps its text unsaved', (
       tester,
     ) async {
       final controller = await pumpList(tester);
       await _open(tester, 'row-0');
       await _type(tester, 'typed');
       await scrollTo(tester, 2000);
+      await tester.pump();
 
       expect(find.byKey(LazyTextFieldKeys.root('row-0')), findsNothing);
       expect(tester.takeException(), isNull);
       expect(controller.activeIds, isEmpty);
-      expect(commits, [('row-0', 'typed')]);
+      expect(commits, isEmpty);
       expect(
         controller.draftFor('row-0')!.status,
-        LazyTextFieldDraftStatus.pending,
+        LazyTextFieldDraftStatus.unsaved,
       );
 
       await scrollTo(tester, 0);
       expect(_shown(tester, 'row-0'), 'typed');
+    });
+
+    testWidgets('reopening a kept cell restores the text; Escape discards it', (
+      tester,
+    ) async {
+      final controller = await pumpList(tester);
+      await _open(tester, 'row-0');
+      await _type(tester, 'typed');
+      await scrollTo(tester, 2000);
+      await scrollTo(tester, 0);
+
+      await _open(tester, 'row-0');
+      expect(_editorText(tester), 'typed');
+      // Continuing the same cell does not save it.
+      expect(commits, isEmpty);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(controller.draftFor('row-0'), isNull);
+      expect(_shown(tester, 'row-0'), 'old-0');
+      expect(commits, isEmpty);
+    });
+
+    testWidgets('starting to edit another cell saves the kept text', (
+      tester,
+    ) async {
+      final controller = await pumpList(tester);
+      await _open(tester, 'row-0');
+      await _type(tester, 'typed');
+      await scrollTo(tester, 2000);
+      await scrollTo(tester, 0);
+
+      await _open(tester, 'row-1');
+      expect(commits, [('row-0', 'typed')]);
       pending.single.complete();
       await tester.pump();
-      expect(_shown(tester, 'row-0'), 'typed');
+      expect(
+        controller.draftFor('row-0')!.status,
+        LazyTextFieldDraftStatus.saved,
+      );
+    });
+
+    testWidgets('a reopened kept cell is saved when the user switches away', (
+      tester,
+    ) async {
+      await pumpList(tester);
+      await _open(tester, 'row-0');
+      await _type(tester, 'typed');
+      await scrollTo(tester, 2000);
+      await scrollTo(tester, 0);
+      await _open(tester, 'row-0');
+      await _open(tester, 'row-1');
+
+      expect(commits, [('row-0', 'typed')]);
+    });
+
+    testWidgets('a kept onSave cell is saved by the next edit elsewhere', (
+      tester,
+    ) async {
+      final controller = await pumpList(tester, useOnSave: true);
+      await _open(tester, 'row-0');
+      await _type(tester, 'typed');
+      await scrollTo(tester, 2000);
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(commits, isEmpty);
+      await _open(tester, 'row-40');
+      await tester.pump();
+      expect(commits, [('row-0', 'typed')]);
       expect(
         controller.draftFor('row-0')!.status,
         LazyTextFieldDraftStatus.saved,
@@ -377,32 +445,14 @@ void main() {
       expect(_editorText(tester), 'typed');
     });
 
-    testWidgets('scrolling an edited onSave cell away saves its text', (
+    testWidgets('an unchanged editor scrolled away keeps nothing', (
       tester,
     ) async {
-      final controller = await pumpList(tester, useOnSave: true);
-      await _open(tester, 'row-0');
-      await _type(tester, 'typed');
-      await scrollTo(tester, 2000);
-      await tester.pump();
-
-      expect(tester.takeException(), isNull);
-      expect(commits, [('row-0', 'typed')]);
-      await scrollTo(tester, 0);
-      expect(_shown(tester, 'row-0'), 'typed');
-      expect(
-        controller.draftFor('row-0')!.status,
-        LazyTextFieldDraftStatus.saved,
-      );
-    });
-
-    testWidgets('an unchanged editor scrolled away does not commit', (
-      tester,
-    ) async {
-      await pumpList(tester);
+      final controller = await pumpList(tester);
       await _open(tester, 'row-0');
       await scrollTo(tester, 2000);
       expect(commits, isEmpty);
+      expect(controller.draftFor('row-0'), isNull);
     });
 
     testWidgets('the discard policy drops the text of a cell scrolled away', (
@@ -422,7 +472,7 @@ void main() {
       expect(_shown(tester, 'row-0'), 'old-0');
     });
 
-    testWidgets('a recycled cell commits the text typed for its old id', (
+    testWidgets('a recycled cell keeps the text typed for its old id', (
       tester,
     ) async {
       final controller = LazyTextFieldEditController();
@@ -457,10 +507,18 @@ void main() {
       await tester.pump();
 
       expect(tester.takeException(), isNull);
-      expect(commits, [('a', 'typed')]);
+      expect(commits, isEmpty);
       expect(controller.activeIds, isEmpty);
       expect(_shown(tester, 'b'), 'old-b');
+      expect(
+        controller.draftFor('a')!.status,
+        LazyTextFieldDraftStatus.unsaved,
+      );
       expect(controller.displayText('a', 'old-a'), 'typed');
+
+      final result = await controller.saveDrafts();
+      expect(result.saved, 1);
+      expect(commits, [('a', 'typed')]);
     });
   });
 }

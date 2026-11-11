@@ -26,13 +26,24 @@ When a scoped cell starts editing, the controller closes the others. With the
 default `LazyTextFieldSwitchPolicy.commit` (since 2.1.0) the closed cell's
 `onSave` receives its changed text in the background and the new cell is
 focused immediately; if `onSave` returns `false` or throws, the text stays as
-a failed draft (reopen restores it, Escape discards it). The same happens when
-an editing cell is recycled or disposed (virtualized grids). Pass
+a failed draft (reopen restores it, Escape discards it). An editing cell that
+is recycled or disposed (virtualized grids, data refresh) is not saved: its
+text becomes an `unsaved` draft, saved when another cell starts editing or by
+`saveDrafts()`, and never saved otherwise. Pass
 `LazyTextFieldEditController(switchPolicy: LazyTextFieldSwitchPolicy.discard)`
 to drop the text instead (2.0 behavior). Do not reimplement commit-on-switch
 in `onWillStartEditing`.
 
 ## Background Saves
+
+`unsaved` drafts are not saved on their own. Call
+`editController.saveDrafts()` before leaving a screen, or check
+`editController.drafts` for unsaved entries. For "Save all" screens use
+`saveMode: LazyTextFieldSaveMode.deferred` with `saveDrafts()` or
+`saveDrafts(batch: ...)`. To survive restarts, pass a
+`LazyTextFieldDraftStore` (for example a Hive box) as `draftStore`, use
+String draft keys that are unique and stable, and call `loadDrafts()` at
+startup.
 
 For server-backed grids, give cells `onCommit` (throw to fail) instead of
 `onSave`; any `LazyTextFieldEditController` (including the one a scope creates

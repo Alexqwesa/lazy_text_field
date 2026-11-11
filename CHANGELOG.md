@@ -9,14 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Behavior change:** when a `ScopedLazyTextField` editor closes without a
-  submit (another cell starts editing, the cell is recycled for another
-  `cellId`, or it is disposed, e.g. by a virtualized grid), its changed text
-  is now passed to `onSave` instead of being dropped. The new cell is focused
-  immediately and the save runs in the background. The text is kept as a
-  draft, and as a failed draft if `onSave` returns `false` or throws;
-  reopening the cell restores it and Escape discards it. To keep the 2.0
-  behavior, create the controller with
+- **Behavior change:** when a `ScopedLazyTextField` editor closes because
+  another cell starts editing, its changed text is now passed to `onSave`
+  instead of being dropped. The new cell is focused immediately and the save
+  runs in the background. The text is kept as a draft, and as a failed draft
+  if `onSave` returns `false` or throws; reopening the cell restores it and
+  Escape discards it.
+- **Behavior change:** an editing cell that leaves the tree (recycled for
+  another `cellId`, or disposed, e.g. by a virtualized grid) keeps its changed
+  text as an `unsaved` draft instead of dropping it. It is saved when another
+  cell starts editing or by `saveDrafts()`. **If neither happens, it is never
+  saved**; it lives in memory only unless a `draftStore` is set.
+- To keep the 2.0 behavior for both, create the controller with
   `LazyTextFieldEditController(switchPolicy: LazyTextFieldSwitchPolicy.discard)`.
 - An exception thrown by `onSave` is reported to `FlutterError` and treated as
   a rejection, instead of leaving later saves blocked.
@@ -43,6 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `failed`).
 - `LazyTextFieldSaveOrder`: `sequential` (default, one commit at a time) or
   `perRow` (different `rowKey`s save in parallel).
+- `LazyTextFieldDraftStatus.unsaved` and `LazyTextFieldSaveMode`
+  (`immediate`, `deferred`) for "Save all" screens.
+- `LazyTextFieldEditController.saveDrafts({batch})` (returns
+  `LazyTextFieldSaveDraftsResult`), `drafts`, `holdDraft`, `setDraftSaver`
+  (`LazyTextFieldDraftSaver`), and `LazyTextFieldBatchCommit`.
+- `LazyTextFieldDraftStore` (`draftStore`, `loadDrafts()`),
+  `LazyTextFieldStoredDraft` (JSON), and `LazyTextFieldMemoryDraftStore`, to
+  keep unsaved drafts across restarts (for example in Hive).
+- `startEditing(draftKey:)` so the draft being continued is not saved.
 - `LazyTextFieldEditController.trackDraft`: shows a value as a draft while a
   save you run yourself is in progress, and keeps it if that save fails.
   `enqueue` and `trackDraft` take `notify: false` for use in `State.dispose`.
