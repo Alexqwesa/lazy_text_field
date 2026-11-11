@@ -76,6 +76,13 @@ class ScopedLazyTextField extends StatefulWidget {
   ///
   /// Return false to reject; a throw is reported to [FlutterError] and
   /// treated as a rejection.
+  ///
+  /// Calls go through the controller's save queue
+  /// ([LazyTextFieldEditController.saveOrder]): a save of this cell starts
+  /// only after its earlier save finished, so an older value cannot land
+  /// after a newer one. Under the default
+  /// [LazyTextFieldSaveOrder.sequential], a submit also waits for saves of
+  /// other cells; the editor stays open meanwhile.
   final LazyTextFieldSave? onSave;
 
   /// Background commit path through the scope's save queue.
@@ -300,11 +307,13 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     }
     final onSave = config.onSave!;
     final cellId = config.cellId;
+    final rowKey = config.rowKey;
     return (draft) => editController.trackDraft(
       key: key,
       source: draft.baseText,
       value: draft.value,
       save: () => _runOnSave(onSave, draft.value, cellId),
+      rowKey: rowKey,
     );
   }
 
@@ -482,11 +491,15 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     final epoch = _editEpoch;
     final cellId = widget.cellId;
     final key = _draftKey;
-    final save = _runOnSave(
-      widget.onSave!,
-      value,
-      cellId,
-    ).catchError((Object _) => false);
+    final onSave = widget.onSave!;
+    // Through the save queue: it starts after earlier saves of this cell, so
+    // an older value cannot overwrite this one.
+    final save = editController.queueSave(
+      key: key,
+      value: value,
+      save: () => _runOnSave(onSave, value, cellId),
+      rowKey: widget.rowKey,
+    );
     _saveInFlight = true;
     _inFlightValue = value;
     _inFlightEditor = editor;
@@ -558,25 +571,23 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       return;
     }
 
-    // A submit of this text from this editor is already running; track its
-    // result instead of saving twice. That submit calls onSaved.
-    final running =
+    // A submit of this text from this editor is already queued: the queue
+    // reuses that save instead of saving twice, and that submit calls
+    // onSaved.
+    final submitted =
         _saveInFlight &&
-            identical(_inFlightEditor, editor) &&
-            _inFlightValue == value
-        ? _inFlightSave
-        : null;
+        identical(_inFlightEditor, editor) &&
+        _inFlightValue == value;
     final onSave = config.onSave!;
     final tracked = editController.trackDraft(
       key: key,
       source: config.text,
       value: value,
-      save: running == null
-          ? () => _runOnSave(onSave, value, cellId)
-          : () => running,
+      save: () => _runOnSave(onSave, value, cellId),
+      rowKey: config.rowKey,
       notify: notify,
     );
-    if (running == null) unawaited(tracked.then(savedCallback));
+    if (!submitted) unawaited(tracked.then(savedCallback));
   }
 
   /// Runs [onSave], reporting a throw to [FlutterError] before rethrowing:

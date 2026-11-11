@@ -55,7 +55,12 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// drafts until [saveDrafts].
   final LazyTextFieldSaveMode saveMode;
 
-  /// How [ScopedLazyTextField.onCommit] saves are ordered.
+  /// How saves are ordered: `onCommit` commits, `onSave` calls, and batches
+  /// all go through the same queue.
+  ///
+  /// In every order, saves of the same draft key never overlap: a newer
+  /// value is sent only after the older save finished, so it cannot be
+  /// overwritten by it.
   final LazyTextFieldSaveOrder saveOrder;
 
   /// Where unsaved, pending, and failed drafts are written so they survive an
@@ -251,7 +256,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// save them, when they are built.
   Future<int> loadDrafts() => _drafts.load();
 
-  /// Number of commits queued or running.
+  /// Number of saves queued or running (`onCommit` and `onSave`).
   int get pendingSaves => _drafts.pendingSaves;
 
   /// Completes when the save queue is empty; immediately if it is.
@@ -296,28 +301,47 @@ class LazyTextFieldEditController extends ChangeNotifier {
     notify: notify,
   );
 
-  /// Shows [value] as the draft for [key] while a save you run yourself is in
-  /// progress, and keeps it if the save fails.
+  /// Shows [value] as the draft for [key] while [save] runs in the save
+  /// queue, and keeps it if the save fails.
   ///
-  /// [save] runs right away (in a microtask), outside the save queue, and
-  /// does not count towards [pendingSaves]. Returning true marks the draft
-  /// saved; returning false or throwing marks it failed (with the thrown
-  /// error, if any). [ScopedLazyTextField] uses this for `onSave` when an
-  /// editor closes without a submit. Set [notify] to false when calling from
-  /// [State.dispose].
+  /// Like [enqueue], but [save] reports the outcome: true marks the draft
+  /// saved; false or a throw marks it failed (with the thrown error, if any).
+  /// [ScopedLazyTextField] uses this for `onSave` when an editor closes
+  /// without a submit. Set [notify] to false when calling from
+  /// [State.dispose]; [save] always runs asynchronously.
   Future<bool> trackDraft({
     required Object key,
     required String source,
     required String value,
     required Future<bool> Function() save,
+    Object? rowKey,
     bool notify = true,
   }) => _drafts.track(
     key: key,
     source: source,
     value: value,
     save: save,
+    rowKey: rowKey,
     notify: notify,
   );
+
+  /// Runs [save] in the save queue without keeping a draft, for a save whose
+  /// editor stays open until it finishes (as `onSave` on submit does).
+  ///
+  /// Returns whether it saved; a throw counts as false. Queuing the [value]
+  /// that is already queued for [key] returns that save.
+  Future<bool> queueSave({
+    required Object key,
+    required String value,
+    required Future<bool> Function() save,
+    Object? rowKey,
+  }) => _drafts.queue(key: key, value: value, save: save, rowKey: rowKey);
+
+  /// Completes when every [draftStore] write requested so far has finished.
+  ///
+  /// Writes run one at a time, in the order the drafts changed. Await this
+  /// before the app closes if the store is slow.
+  Future<void> whenDraftsStored() => _drafts.whenStored();
 
   /// Updates the active controller text for [cellId] without starting editing.
   void updateText(String cellId, String value) {

@@ -17,6 +17,12 @@ file with `hide LazyTextFieldDraftQueue`, and `LazyTextFieldEditController`
 forwards its public draft members to it. Keep queue logic there and
 widget-free; test it in `test/lazy_text_field_draft_queue_test.dart`.
 
+Every save must go through `_schedule` / `_chain` (lanes: the draft key, plus
+the row or the whole queue), including `onSave` calls, so saves of one key
+never overlap. Draft-store calls go through the single `_write` chain so a
+`put` and a later `delete` cannot land out of order. Do not start a save or a
+store call outside those chains.
+
 ## Lazy Rendering Rules
 
 - Do not allocate `TextEditingController`, `FocusNode`, `ScrollController`,

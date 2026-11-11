@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `LazyTextFieldEditController(switchPolicy: LazyTextFieldSwitchPolicy.discard)`.
 - An exception thrown by `onSave` is reported to `FlutterError` and treated as
   a rejection, instead of leaving later saves blocked.
+- **Behavior change:** `onSave` calls now go through the controller's save
+  queue, like `onCommit`. Saves of the same cell never overlap, so an older
+  save can no longer finish last and overwrite a newer value. Under the
+  default `LazyTextFieldSaveOrder.sequential`, a submit also waits for
+  earlier saves of other cells (its editor stays open until then); use
+  `perRow` with `rowKey` to save rows in parallel. `pendingSaves` and
+  `onSavesSettled` now count `onSave` calls too.
 
 ### Fixed
 
@@ -54,11 +61,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`LazyTextFieldDraftSaver`), and `LazyTextFieldBatchCommit`.
 - `LazyTextFieldDraftStore` (`draftStore`, `loadDrafts()`),
   `LazyTextFieldStoredDraft` (JSON), and `LazyTextFieldMemoryDraftStore`, to
-  keep unsaved drafts across restarts (for example in Hive).
+  keep unsaved drafts across restarts (for example in Hive). Store calls run
+  one at a time, in order; `whenDraftsStored()` waits for them.
 - `startEditing(draftKey:)` so the draft being continued is not saved.
 - `LazyTextFieldEditController.trackDraft`: shows a value as a draft while a
-  save you run yourself is in progress, and keeps it if that save fails.
-  `enqueue` and `trackDraft` take `notify: false` for use in `State.dispose`.
+  save that reports success as a `bool` runs in the save queue, and keeps it
+  if that save fails. `queueSave` runs such a save in the queue without a
+  draft. `enqueue` and `trackDraft` take `notify: false` for use in
+  `State.dispose`.
 - `ScopedLazyTextField.onCommit`, `draftKey`, `rowKey`, `closeOnSubmit`
   (`LazyTextFieldSubmitClose.afterSave` / `immediately`), and
   `errorMessageOf`. `onSave` is now optional; provide exactly one of `onSave`

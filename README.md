@@ -170,14 +170,23 @@ final status = LazyTextFieldControllerScope.maybeOf(context)
   is editing; typing hides it until the next commit.
 - `draftKey` (default `cellId`) lets several cells share one draft.
 
-**Save order.** `onCommit` runs when its turn in the queue comes, so it can
-read state written by earlier saves (for example a row version). Pass
-`saveOrder` to your own `LazyTextFieldEditController` to change it.
+**Save order.** Every save goes through one queue: `onCommit` commits,
+`onSave` calls (on submit and on switch), `saveDrafts()`, and batches. A save
+runs when its turn comes, so it can read state written by earlier saves (for
+example a row version). Pass `saveOrder` to your own
+`LazyTextFieldEditController` to change it.
 
 | `saveOrder`                     | Behavior                                                                                                          |
 |---------------------------------|-------------------------------------------------------------------------------------------------------------------|
-| `sequential` (default)          | One commit at a time, in queue order.                                                                             |
-| `perRow`                        | Commits with the same `rowKey` run in order; different rows run in parallel. Cells without `rowKey` share a queue. |
+| `sequential` (default)          | One save at a time, in queue order.                                                                               |
+| `perRow`                        | Saves with the same `rowKey` run in order; different rows run in parallel. Cells without `rowKey` share a queue.   |
+
+In both orders, **saves of the same draft key never overlap**: a newer value
+is sent only after the older save finished, so the older one cannot land
+last and overwrite it on the server. Under `sequential`, an `onSave` submit
+waits for earlier saves, also of other cells, and its editor stays open
+until its turn. The queue keeps one client in order; if several clients edit
+the same record, check row versions on the server as well.
 
 ### Unsaved drafts, "Save all", and local storage
 
@@ -279,6 +288,11 @@ await editController.loadDrafts(); // at startup
   `saveDrafts()` skips restored drafts whose cell has not been built yet;
   `saveDrafts(batch: ...)` includes them.
 - Failure errors are not stored.
+- Store calls run one at a time, in the order the drafts changed: a `delete`
+  starts only after the earlier `put` finished, so a deleted draft cannot
+  come back. A failed write is reported to `FlutterError` and the next one
+  still runs. `loadDrafts()` waits for queued writes;
+  `whenDraftsStored()` completes once every write so far has finished.
 
 ### Refreshing data around edits
 

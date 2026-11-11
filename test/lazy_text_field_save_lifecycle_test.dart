@@ -127,7 +127,7 @@ void main() {
       expect(saved, ['first', 'second']);
     });
 
-    testWidgets('a reopened editor can submit while the old save still runs', (
+    testWidgets('a newer submit waits for the older save of the cell', (
       tester,
     ) async {
       final first = Completer<bool>();
@@ -142,11 +142,64 @@ void main() {
       await _submit(tester);
       await tester.pump();
 
-      expect(saves, ['first', 'second']);
-      expect(controller.isEditing('a'), isFalse);
+      // "second" is not sent while "first" may still land after it.
+      expect(saves, ['first']);
+      expect(controller.isEditing('a'), isTrue);
+      expect(controller.pendingSaves, 2);
+
       first.complete(true);
       await tester.pump();
-      expect(saved, ['second', 'first']);
+      await tester.pump();
+      expect(saves, ['first', 'second']);
+      expect(saved, ['first', 'second']);
+      expect(controller.isEditing('a'), isFalse);
+      expect(controller.pendingSaves, 0);
+    });
+
+    testWidgets('an older save that fails does not block the newer one', (
+      tester,
+    ) async {
+      final first = Completer<bool>();
+      onSaveA = (value) => value == 'first' ? first.future : true;
+      await pumpCells(tester);
+      await _open(tester, 'a');
+      await _type(tester, 'first');
+      await _open(tester, 'b');
+      await _open(tester, 'a');
+      await _type(tester, 'second');
+      await _submit(tester);
+      await tester.pump();
+      expect(saves, ['first']);
+
+      first.complete(false);
+      await tester.pump();
+      await tester.pump();
+      expect(saves, ['first', 'second']);
+      expect(saved, ['second']);
+      expect(controller.isEditing('a'), isFalse);
+    });
+
+    testWidgets('onSave calls of different cells run one at a time', (
+      tester,
+    ) async {
+      final slow = Completer<bool>();
+      onSaveA = (_) => slow.future;
+      await pumpCells(tester);
+      await _open(tester, 'a');
+      await _type(tester, 'x');
+      await _open(tester, 'b');
+      await _type(tester, 'y');
+      await _submit(tester);
+      await tester.pump();
+
+      // Sequential (default): b's submit waits for a's save.
+      expect(saves, ['x']);
+      expect(controller.isEditing('b'), isTrue);
+      slow.complete(true);
+      await tester.pump();
+      await tester.pump();
+      expect(controller.isEditing('b'), isFalse);
+      expect(controller.pendingSaves, 0);
     });
 
     testWidgets('a rejected switch save keeps the text as a failed draft', (

@@ -72,12 +72,17 @@ enum LazyTextFieldSaveMode {
   deferred,
 }
 
-/// How a [LazyTextFieldEditController] orders its saves.
+/// How a [LazyTextFieldEditController] orders its saves (`onCommit`,
+/// `onSave`, and batches).
+///
+/// In every order, saves of the same draft key never overlap, so an older
+/// value cannot land after a newer one.
 enum LazyTextFieldSaveOrder {
   /// One save at a time, in the order they were queued.
   ///
-  /// The safe default: a commit never overlaps another commit from the same
-  /// controller.
+  /// The safe default: a save never overlaps another save from the same
+  /// controller. A slow save delays the next one, including an `onSave`
+  /// submit of another cell (its editor stays open until its turn).
   sequential,
 
   /// Saves with the same `rowKey` run one at a time, in order; saves for
@@ -294,14 +299,18 @@ class LazyTextFieldDraftQueue {
       <Object, LazyTextFieldDraftSaver>{};
   final Map<String, LazyTextFieldStoredDraft> _stored =
       <String, LazyTextFieldStoredDraft>{};
-  final Map<Object, Future<bool>> _inFlight = <Object, Future<bool>>{};
-  final Map<Object?, Future<void>> _lanes = <Object?, Future<void>>{};
+  // The latest queued save of each key, until it finishes.
+  final Map<Object, _QueuedSave> _inFlight = <Object, _QueuedSave>{};
+  // The last job of each lane: a key, a row, or the whole queue.
+  final Map<Object, Future<void>> _tails = <Object, Future<void>>{};
+  // Store writes run one at a time, in order.
+  Future<void> _storeTail = Future<void>.value();
   final List<Completer<void>> _settledWaiters = <Completer<void>>[];
   int _pendingSaves = 0;
   int _savedSinceSettle = 0;
   int _failedSinceSettle = 0;
 
-  /// Number of commits queued or running.
+  /// Number of saves queued or running.
   int get pendingSaves => _pendingSaves;
 
   /// Every draft, by key.
@@ -416,7 +425,7 @@ class LazyTextFieldDraftQueue {
   Future<LazyTextFieldSaveDraftsResult> _saveBatch(
     Map<Object, LazyTextFieldDraft> targets,
     LazyTextFieldBatchCommit batch,
-  ) async {
+  ) {
     final pending = <Object, LazyTextFieldDraft>{
       for (final MapEntry(:key, value: draft) in targets.entries)
         key: draft._withStatus(LazyTextFieldDraftStatus.pending),
@@ -425,42 +434,62 @@ class LazyTextFieldDraftQueue {
     _pendingSaves += pending.length;
     _notify();
 
-    Map<Object, Object?> errors;
-    try {
-      errors = await batch({
-        for (final MapEntry(:key, value: draft) in targets.entries)
-          key: draft.value,
-      });
-    } catch (error) {
-      errors = {for (final key in targets.keys) key: error};
-    }
+    final result = Completer<LazyTextFieldSaveDraftsResult>();
+    // Starts after every earlier save of these keys; later saves of them
+    // wait for it.
+    _chain(
+      [
+        for (final key in targets.keys) (#key, key),
+        if (saveOrder == LazyTextFieldSaveOrder.sequential) #queue,
+      ],
+      () async {
+        Map<Object, Object?> errors;
+        try {
+          errors = await batch({
+            for (final MapEntry(:key, value: draft) in targets.entries)
+              key: draft.value,
+          });
+        } catch (error) {
+          errors = {for (final key in targets.keys) key: error};
+        }
 
-    var saved = 0;
-    pending.forEach((key, draft) {
-      final error = errors[key];
-      if (error == null) saved++;
-      if (!identical(_drafts[key], draft)) return;
-      _set(
-        key,
-        error == null
-            ? draft._withStatus(LazyTextFieldDraftStatus.saved)
-            : draft._withStatus(LazyTextFieldDraftStatus.failed, error: error),
-      );
-    });
-    final failed = pending.length - saved;
-    _pendingSaves -= pending.length;
-    _savedSinceSettle += saved;
-    _failedSinceSettle += failed;
-    _notify();
-    if (_pendingSaves == 0) _settle();
-    return LazyTextFieldSaveDraftsResult(saved: saved, failed: failed);
+        var saved = 0;
+        try {
+          pending.forEach((key, draft) {
+            final error = errors[key];
+            if (error == null) saved++;
+            if (!identical(_drafts[key], draft)) return;
+            _set(
+              key,
+              error == null
+                  ? draft._withStatus(LazyTextFieldDraftStatus.saved)
+                  : draft._withStatus(
+                      LazyTextFieldDraftStatus.failed,
+                      error: error,
+                    ),
+            );
+          });
+        } finally {
+          final failed = pending.length - saved;
+          _pendingSaves -= pending.length;
+          _savedSinceSettle += saved;
+          _failedSinceSettle += failed;
+          _notify();
+          result.complete(
+            LazyTextFieldSaveDraftsResult(saved: saved, failed: failed),
+          );
+          if (_pendingSaves == 0) _settle();
+        }
+      },
+    );
+    return result.future;
   }
 
   /// Queues [commit] for [value] and keeps [value] as the draft for [key].
   ///
   /// [source] is the cell's source text at commit time. Returns whether the
-  /// commit succeeded. Committing the value that is already pending for
-  /// [key] returns the running save instead of queuing another.
+  /// commit succeeded. Committing the value that is already queued for [key]
+  /// returns that save instead of queuing another.
   Future<bool> enqueue({
     required Object key,
     required String source,
@@ -468,105 +497,157 @@ class LazyTextFieldDraftQueue {
     required LazyTextFieldCommit commit,
     Object? rowKey,
     bool notify = true,
+  }) => _saveDraft(
+    key: key,
+    source: source,
+    value: value,
+    rowKey: rowKey,
+    notify: notify,
+    save: () async {
+      await commit(value);
+      return true;
+    },
+  );
+
+  /// Keeps [value] as a pending draft for [key] while [save] runs in the
+  /// queue, then marks it saved (true) or failed (false, or the error [save]
+  /// threw).
+  Future<bool> track({
+    required Object key,
+    required String source,
+    required String value,
+    required Future<bool> Function() save,
+    Object? rowKey,
+    bool notify = true,
+  }) => _saveDraft(
+    key: key,
+    source: source,
+    value: value,
+    rowKey: rowKey,
+    notify: notify,
+    save: save,
+  );
+
+  /// Runs [save] in the queue without keeping a draft; returns whether it
+  /// saved (false if it threw). Queuing the value that is already queued for
+  /// [key] returns that save.
+  Future<bool> queue({
+    required Object key,
+    required String value,
+    required Future<bool> Function() save,
+    Object? rowKey,
+    bool notify = true,
+  }) {
+    final job = _schedule(key: key, value: value, rowKey: rowKey, save: save);
+    if (notify) _notify();
+    return job.done.future;
+  }
+
+  Future<bool> _saveDraft({
+    required Object key,
+    required String source,
+    required String value,
+    required Object? rowKey,
+    required bool notify,
+    required Future<bool> Function() save,
   }) {
     final previous = _drafts[key];
-    if (previous != null &&
-        previous.status == LazyTextFieldDraftStatus.pending &&
-        previous.value == value) {
-      final running = _inFlight[key];
-      if (running != null) return running;
+    final running = _inFlight[key];
+    if (running != null &&
+        running.value == value &&
+        previous?.status == LazyTextFieldDraftStatus.pending &&
+        previous?.value == value) {
+      return running.done.future;
     }
-
     final draft = _newDraft(
       key,
       source,
       value,
       LazyTextFieldDraftStatus.pending,
     );
-    _pendingSaves++;
+    final job = _schedule(key: key, value: value, rowKey: rowKey, save: save);
+    job.listeners.add((saved, error) {
+      if (!identical(_drafts[key], draft)) return;
+      _set(
+        key,
+        saved
+            ? draft._withStatus(LazyTextFieldDraftStatus.saved)
+            : draft._withStatus(LazyTextFieldDraftStatus.failed, error: error),
+      );
+    });
     if (notify) _notify();
+    return job.done.future;
+  }
 
-    final lane = saveOrder == LazyTextFieldSaveOrder.perRow ? rowKey : null;
-    final completer = Completer<bool>();
-    final tail = (_lanes[lane] ?? Future<void>.value()).then((_) async {
-      var saved = false;
-      try {
-        await commit(value);
-        saved = true;
-        if (identical(_drafts[key], draft)) {
-          _set(key, draft._withStatus(LazyTextFieldDraftStatus.saved));
+  /// Queues [save] for [key]. It starts, always asynchronously, after every
+  /// earlier save of [key] and of its lane ([saveOrder]) has finished.
+  _QueuedSave _schedule({
+    required Object key,
+    required String value,
+    required Object? rowKey,
+    required Future<bool> Function() save,
+  }) {
+    final running = _inFlight[key];
+    if (running != null && running.value == value) return running;
+    final job = _QueuedSave(value);
+    _inFlight[key] = job;
+    _pendingSaves++;
+    _chain(
+      [
+        (#key, key),
+        if (saveOrder == LazyTextFieldSaveOrder.perRow)
+          (#row, rowKey)
+        else
+          #queue,
+      ],
+      () async {
+        var saved = false;
+        Object? error;
+        try {
+          saved = await save();
+        } catch (e) {
+          error = e;
         }
-      } catch (error) {
-        if (identical(_drafts[key], draft)) {
-          _set(
-            key,
-            draft._withStatus(LazyTextFieldDraftStatus.failed, error: error),
-          );
-        }
-      } finally {
         _pendingSaves--;
         if (saved) {
           _savedSinceSettle++;
         } else {
           _failedSinceSettle++;
         }
-        if (identical(_inFlight[key], completer.future)) _inFlight.remove(key);
-        _notify();
-        completer.complete(saved);
-        if (_pendingSaves == 0) _settle();
-      }
-    });
-    _lanes[lane] = tail;
-    unawaited(
-      tail.whenComplete(() {
-        if (identical(_lanes[lane], tail)) _lanes.remove(lane);
-      }),
+        if (identical(_inFlight[key], job)) _inFlight.remove(key);
+        try {
+          for (final listener in job.listeners) {
+            listener(saved, error);
+          }
+        } finally {
+          _notify();
+          job.done.complete(saved);
+          if (_pendingSaves == 0) _settle();
+        }
+      },
     );
-    _inFlight[key] = completer.future;
-    return completer.future;
+    return job;
   }
 
-  /// Keeps [value] as a pending draft for [key] while [save] runs, then marks
-  /// it saved (true) or failed (false, or the error [save] threw).
-  ///
-  /// Unlike [enqueue], [save] runs right away, outside the queue, and does
-  /// not count towards [pendingSaves]. It is called in a microtask, so this
-  /// is safe to call while the widget tree is locked (pass [notify] false).
-  Future<bool> track({
-    required Object key,
-    required String source,
-    required String value,
-    required Future<bool> Function() save,
-    bool notify = true,
-  }) async {
-    final draft = _newDraft(
-      key,
-      source,
-      value,
-      LazyTextFieldDraftStatus.pending,
+  /// Runs [body] after the last job of every lane in [lanes], and makes it
+  /// the last job of those lanes.
+  void _chain(List<Object> lanes, Future<void> Function() body) {
+    final before = <Future<void>>[for (final lane in lanes) ?_tails[lane]];
+    final tail = Future.wait(before)
+        .then((_) => body())
+        .onError<Object>(
+          (error, stack) => _report(error, stack, 'while saving a draft'),
+        );
+    for (final lane in lanes) {
+      _tails[lane] = tail;
+    }
+    unawaited(
+      tail.whenComplete(() {
+        for (final lane in lanes) {
+          if (identical(_tails[lane], tail)) _tails.remove(lane);
+        }
+      }),
     );
-    if (notify) _notify();
-    await Future<void>.value();
-    var saved = false;
-    Object? error;
-    try {
-      saved = await save();
-    } catch (e) {
-      error = e;
-    }
-    if (identical(_drafts[key], draft)) {
-      _set(
-        key,
-        draft._withStatus(
-          saved
-              ? LazyTextFieldDraftStatus.saved
-              : LazyTextFieldDraftStatus.failed,
-          error: error,
-        ),
-      );
-    }
-    _notify();
-    return saved;
   }
 
   /// Restores the drafts in [store] that are not in memory as unsaved
@@ -574,6 +655,8 @@ class LazyTextFieldDraftQueue {
   Future<int> load() async {
     final store = this.store;
     if (store == null) return 0;
+    // Writes queued before the load land first.
+    await _storeTail;
     final stored = await store.load();
     var restored = 0;
     for (final record in stored) {
@@ -654,20 +737,28 @@ class LazyTextFieldDraftQueue {
     }
   }
 
+  // Chained, so a put and a later delete of the same key land in that order
+  // even when the store would complete them out of order.
   void _write(FutureOr<void> Function() write) {
-    unawaited(
-      Future<void>.sync(write).catchError((Object error, StackTrace stack) {
-        FlutterError.reportError(
-          FlutterErrorDetails(
-            exception: error,
-            stack: stack,
-            library: 'lazy_text_field',
-            context: ErrorDescription(
-              'while writing a LazyTextFieldDraftStore',
-            ),
-          ),
+    _storeTail = _storeTail
+        .then((_) => write())
+        .onError<Object>(
+          (error, stack) =>
+              _report(error, stack, 'while writing a LazyTextFieldDraftStore'),
         );
-      }),
+  }
+
+  /// Completes when every store write queued so far has finished.
+  Future<void> whenStored() => _storeTail;
+
+  void _report(Object error, StackTrace stack, String context) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'lazy_text_field',
+        context: ErrorDescription(context),
+      ),
     );
   }
 
@@ -691,4 +782,13 @@ class LazyTextFieldDraftQueue {
     _drafts.clear();
     _savers.clear();
   }
+}
+
+class _QueuedSave {
+  _QueuedSave(this.value);
+
+  final String value;
+  final Completer<bool> done = Completer<bool>();
+  final List<void Function(bool saved, Object? error)> listeners =
+      <void Function(bool saved, Object? error)>[];
 }

@@ -54,8 +54,11 @@ own draft map, save queue, or "return false and close later" logic:
   `text` changes.
 - Read `LazyTextFieldControllerScope.maybeOf(context)?.draftFor(key)?.status`
   to style pending/saved/failed cells.
-- `saveOrder: LazyTextFieldSaveOrder.sequential` (default) never overlaps
-  commits; `perRow` with `rowKey` runs different rows in parallel.
+- All saves (`onCommit`, `onSave`, `saveDrafts`, batches) share one queue.
+  `saveOrder: LazyTextFieldSaveOrder.sequential` (default) never overlaps
+  saves; `perRow` with `rowKey` runs different rows in parallel. Saves of one
+  draft key never overlap in either order, so do not add your own
+  "latest save wins" guards.
 - `onCommit` runs when its queue turn comes; compute request state such as
   expected versions inside it.
 - Map errors with `errorMessageOf`; Escape discards a failed draft.
