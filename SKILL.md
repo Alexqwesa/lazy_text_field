@@ -24,8 +24,10 @@ one edit manager.
 
 When a scoped cell starts editing, the controller closes the others. With the
 default `LazyTextFieldSwitchPolicy.commit` (since 2.1.0) the closed cell's
-`onSave` receives its text in the background and the new cell is focused
-immediately; `false` from that call only skips `onSaved`. Pass
+`onSave` receives its changed text in the background and the new cell is
+focused immediately; if `onSave` returns `false` or throws, the text stays as
+a failed draft (reopen restores it, Escape discards it). The same happens when
+an editing cell is recycled or disposed (virtualized grids). Pass
 `LazyTextFieldEditController(switchPolicy: LazyTextFieldSwitchPolicy.discard)`
 to drop the text instead (2.0 behavior). Do not reimplement commit-on-switch
 in `onWillStartEditing`.

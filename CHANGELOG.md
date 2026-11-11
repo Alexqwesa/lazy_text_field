@@ -9,12 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Behavior change:** when a `ScopedLazyTextField` starts editing, the
-  previous cell's unsaved text is now passed to its `onSave` instead of being
-  dropped. The new cell is focused immediately and the save runs in the
-  background; the previous editor is already closed, so returning `false`
-  only skips `onSaved`. To keep the 2.0 behavior, create the controller with
+- **Behavior change:** when a `ScopedLazyTextField` editor closes without a
+  submit (another cell starts editing, the cell is recycled for another
+  `cellId`, or it is disposed, e.g. by a virtualized grid), its changed text
+  is now passed to `onSave` instead of being dropped. The new cell is focused
+  immediately and the save runs in the background. The text is kept as a
+  draft, and as a failed draft if `onSave` returns `false` or throws;
+  reopening the cell restores it and Escape discards it. To keep the 2.0
+  behavior, create the controller with
   `LazyTextFieldEditController(switchPolicy: LazyTextFieldSwitchPolicy.discard)`.
+- An exception thrown by `onSave` is reported to `FlutterError` and treated as
+  a rejection, instead of leaving later saves blocked.
+
+### Fixed
+
+- A save that finished after its cell had been closed and reopened could
+  close the new editor.
+- Recycling an editing `ScopedLazyTextField` for a new `cellId` notified the
+  scope during build (`markNeedsBuild() called during build`).
 
 ### Added
 
@@ -31,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `failed`).
 - `LazyTextFieldSaveOrder`: `sequential` (default, one commit at a time) or
   `perRow` (different `rowKey`s save in parallel).
+- `LazyTextFieldEditController.trackDraft`: shows a value as a draft while a
+  save you run yourself is in progress, and keeps it if that save fails.
+  `enqueue` and `trackDraft` take `notify: false` for use in `State.dispose`.
 - `ScopedLazyTextField.onCommit`, `draftKey`, `rowKey`, `closeOnSubmit`
   (`LazyTextFieldSubmitClose.afterSave` / `immediately`), and
   `errorMessageOf`. `onSave` is now optional; provide exactly one of `onSave`

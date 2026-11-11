@@ -186,6 +186,7 @@ class LazyTextFieldDraftQueue {
     required String value,
     required LazyTextFieldCommit commit,
     Object? rowKey,
+    bool notify = true,
   }) {
     final previous = _drafts[key];
     if (previous != null &&
@@ -195,20 +196,9 @@ class LazyTextFieldDraftQueue {
       if (running != null) return running;
     }
 
-    final stale = <String>{
-      ...?previous?._staleSources,
-      if (previous != null) previous.value,
-      source,
-    }..remove(value);
-    final draft = LazyTextFieldDraft._(
-      value: value,
-      baseText: previous?.baseText ?? source,
-      status: LazyTextFieldDraftStatus.pending,
-      staleSources: stale,
-    );
-    _drafts[key] = draft;
+    final draft = _pendingDraft(key, source, value);
     _pendingSaves++;
-    _notify();
+    if (notify) _notify();
 
     final lane = saveOrder == LazyTextFieldSaveOrder.perRow ? rowKey : null;
     final completer = Completer<bool>();
@@ -248,6 +238,58 @@ class LazyTextFieldDraftQueue {
     );
     _inFlight[key] = completer.future;
     return completer.future;
+  }
+
+  /// Keeps [value] as a pending draft for [key] while [save] runs, then marks
+  /// it saved (true) or failed (false, or the error [save] threw).
+  ///
+  /// Unlike [enqueue], [save] runs right away, outside the queue, and does
+  /// not count towards [pendingSaves]. It is called in a microtask, so this
+  /// is safe to call while the widget tree is locked (pass [notify] false).
+  Future<bool> track({
+    required Object key,
+    required String source,
+    required String value,
+    required Future<bool> Function() save,
+    bool notify = true,
+  }) async {
+    final draft = _pendingDraft(key, source, value);
+    if (notify) _notify();
+    await Future<void>.value();
+    var saved = false;
+    Object? error;
+    try {
+      saved = await save();
+    } catch (e) {
+      error = e;
+    }
+    if (identical(_drafts[key], draft)) {
+      _drafts[key] = draft._withStatus(
+        saved
+            ? LazyTextFieldDraftStatus.saved
+            : LazyTextFieldDraftStatus.failed,
+        error: error,
+      );
+    }
+    _notify();
+    return saved;
+  }
+
+  LazyTextFieldDraft _pendingDraft(Object key, String source, String value) {
+    final previous = _drafts[key];
+    final stale = <String>{
+      ...?previous?._staleSources,
+      if (previous != null) previous.value,
+      source,
+    }..remove(value);
+    final draft = LazyTextFieldDraft._(
+      value: value,
+      baseText: previous?.baseText ?? source,
+      status: LazyTextFieldDraftStatus.pending,
+      staleSources: stale,
+    );
+    _drafts[key] = draft;
+    return draft;
   }
 
   void _settle() {

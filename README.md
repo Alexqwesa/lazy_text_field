@@ -99,9 +99,12 @@ When a `ScopedLazyTextField` starts editing, the shared
 `switchPolicy` decides what happens to their unsaved text:
 
 - `LazyTextFieldSwitchPolicy.commit` (default since 2.1.0): the previous
-  cell's `onSave` is called with its text, and the new cell gets focus
-  immediately. The save runs in the background; the previous editor is
-  already closed, so returning `false` only skips `onSaved`.
+  cell's `onSave` (or `onCommit`) is called with its changed text, and the
+  new cell gets focus immediately. The save runs in the background. The
+  previous editor is already closed, so its text is kept as a draft: shown
+  while saving and, if `onSave` returns `false` or throws, kept as a failed
+  draft that reopening the cell restores and Escape discards.
+  Unchanged text is not saved.
 - `LazyTextFieldSwitchPolicy.discard`: the previous text is dropped
   (2.0 behavior).
 
@@ -111,10 +114,15 @@ final editController = LazyTextFieldEditController(
 );
 ```
 
-> **Behavior change in 2.1.0:** switching cells used to drop the previous
-> draft. It is now passed to `onSave`. Make `onSave` tolerate being called
-> for a cell that is no longer editing, or pass
-> `LazyTextFieldSwitchPolicy.discard`.
+The same applies when an editing cell leaves the tree without a submit:
+recycled for another `cellId`, or disposed by a virtualized grid that scrolled
+it away. (Flutter's `ListView` keeps a focused field alive by default, so its
+editor stays open instead.)
+
+> **Behavior change in 2.1.0:** switching cells, recycling an editing cell,
+> or disposing it used to drop the unsaved text. It is now passed to
+> `onSave`. Make `onSave` tolerate being called for a cell that is no longer
+> editing, or pass `LazyTextFieldSwitchPolicy.discard`.
 
 ### Background saves with drafts
 
@@ -220,6 +228,11 @@ Future<List<Row>> fetchPage() async {
 The field bounds, text viewport, baseline, wrapping, and glyph position remain
 stable when decoration geometry does not change between display and editing
 modes.
+
+`editingMaxHeight` is the deliberate exception: above `maxHeight`, it lets the
+editor grow taller than the read-only field as text is typed (see
+[Growing a row while a cell edits](#growing-a-row-while-a-cell-edits)). Width,
+wrapping, and glyph positions still do not change.
 
 Adding, removing, or resizing decoration content may change the layout. This
 includes changes to padding, constraints, icon sizes, and supporting-text

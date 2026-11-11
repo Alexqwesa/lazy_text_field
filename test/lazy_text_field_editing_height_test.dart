@@ -23,6 +23,8 @@ void main() {
     String text = 'one',
     double? editingMaxHeight = _editingMax,
     bool show = true,
+    bool attach = true,
+    ValueChanged<double>? onExtra,
   }) {
     return tester.pumpWidget(
       MaterialApp(
@@ -44,7 +46,9 @@ void main() {
                       minHeight: _twoLines,
                       maxHeight: _twoLines,
                       editingMaxHeight: editingMaxHeight,
-                      onEditingExtraHeightChanged: reports.add,
+                      onEditingExtraHeightChanged: attach
+                          ? (onExtra ?? reports.add)
+                          : null,
                       onSave: (_) => true,
                     )
                   : const SizedBox(),
@@ -130,6 +134,45 @@ void main() {
     expect(reports, [20]);
 
     await pumpField(tester, show: false);
+    await tester.pump();
+    expect(reports, [20, 0]);
+  });
+
+  testWidgets('detaching the callback shrinks the old consumer; a new one '
+      'gets the current height', (tester) async {
+    await pumpField(tester);
+    await startEditing(tester);
+    await type(tester, '1\n2\n3\n4');
+    expect(reports, [20]);
+
+    await pumpField(tester, attach: false);
+    await tester.pump();
+    expect(reports, [20, 0]);
+
+    // Growing while detached reports nothing.
+    await type(tester, '1\n2\n3\n4\n5');
+    expect(reports, [20, 0]);
+
+    final second = <double>[];
+    await pumpField(tester, onExtra: second.add);
+    await tester.pump();
+    expect(second, [30]);
+    expect(reports, [20, 0]);
+  });
+
+  testWidgets('growing and disposing in one frame reports 0 exactly once', (
+    tester,
+  ) async {
+    await pumpField(tester);
+    await startEditing(tester);
+    await type(tester, '1\n2\n3\n4');
+    expect(reports, [20]);
+
+    // New text and removal land in the same frame: the larger height is
+    // never laid out, and the consumer gets a single 0.
+    await tester.enterText(find.byType(EditableText), '1\n2\n3\n4\n5\n6');
+    await pumpField(tester, show: false);
+    await tester.pump();
     await tester.pump();
     expect(reports, [20, 0]);
   });

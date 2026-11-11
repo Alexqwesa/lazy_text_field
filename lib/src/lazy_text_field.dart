@@ -584,6 +584,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
     _syncFocusNodeListener();
     _debugAssertStableDecoration();
     _scheduleSyncErrorPopup();
+    _syncExtraHeightCallback(oldWidget.onEditingExtraHeightChanged);
 
     final focusNode = widget.focusNode;
     if (!widget.isEditing || focusNode == null) {
@@ -626,22 +627,41 @@ class _LazyTextFieldState extends State<LazyTextField> {
   }
 
   // Layout must not call back into the tree, so report after the frame.
+  // [_pendingExtraHeight] always tracks the latest layout, even without a
+  // callback, so a callback attached later can get the current value.
   void _reportExtraHeight(double extra) {
     _pendingExtraHeight = extra;
-    final report = widget.onEditingExtraHeightChanged;
-    if (_extraHeightReportScheduled || report == null) return;
+    final captured = widget.onEditingExtraHeightChanged;
+    if (_extraHeightReportScheduled || captured == null) return;
     _extraHeightReportScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _extraHeightReportScheduled = false;
-      if (_pendingExtraHeight == _reportedExtraHeight) return;
-      _reportedExtraHeight = _pendingExtraHeight;
       // After dispose, report through the callback captured at scheduling.
-      (mounted ? widget.onEditingExtraHeightChanged : report)?.call(
-        _reportedExtraHeight,
-      );
+      final report = mounted ? widget.onEditingExtraHeightChanged : captured;
+      if (report == null || _pendingExtraHeight == _reportedExtraHeight) {
+        return;
+      }
+      _reportedExtraHeight = _pendingExtraHeight;
+      report(_reportedExtraHeight);
     });
     // Make sure a frame runs, for example when reporting from dispose.
     WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  void _syncExtraHeightCallback(ValueChanged<double>? previous) {
+    final current = widget.onEditingExtraHeightChanged;
+    if (previous != null && current == null) {
+      // The detached consumer last saw a grown editor: tell it to shrink.
+      if (_reportedExtraHeight != 0) {
+        _reportedExtraHeight = 0;
+        WidgetsBinding.instance.addPostFrameCallback((_) => previous(0));
+        WidgetsBinding.instance.ensureVisualUpdate();
+      }
+    } else if (previous == null && current != null) {
+      // A new consumer starts from 0: send it the current height.
+      _reportedExtraHeight = 0;
+      if (_pendingExtraHeight != 0) _reportExtraHeight(_pendingExtraHeight);
+    }
   }
 
   @override
@@ -754,9 +774,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
       textDirection: widget.textDirection,
       minHeight: widget.minHeight,
       maxHeight: _effectiveMaxHeight,
-      onViewportHeight: widget.onEditingExtraHeightChanged == null
-          ? null
-          : _onViewportHeight,
+      onViewportHeight: _onViewportHeight,
       scrollbarGutter: widget.scrollbarGutter,
       scrollbarThickness: widget.scrollbarThickness,
       scrollbarAlignment: widget.scrollbarAlignment,

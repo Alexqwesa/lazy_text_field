@@ -200,18 +200,46 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// queue under [LazyTextFieldSaveOrder.perRow]. Returns whether the commit
   /// succeeded. Committing the value that is already pending for [key]
   /// returns the running save instead of queuing another.
+  ///
+  /// Set [notify] to false when calling from [State.dispose]; [commit] always
+  /// runs asynchronously.
   Future<bool> enqueue({
     required Object key,
     required String source,
     required String value,
     required LazyTextFieldCommit commit,
     Object? rowKey,
+    bool notify = true,
   }) => _drafts.enqueue(
     key: key,
     source: source,
     value: value,
     commit: commit,
     rowKey: rowKey,
+    notify: notify,
+  );
+
+  /// Shows [value] as the draft for [key] while a save you run yourself is in
+  /// progress, and keeps it if the save fails.
+  ///
+  /// [save] runs right away (in a microtask), outside the save queue, and
+  /// does not count towards [pendingSaves]. Returning true marks the draft
+  /// saved; returning false or throwing marks it failed (with the thrown
+  /// error, if any). [ScopedLazyTextField] uses this for `onSave` when an
+  /// editor closes without a submit. Set [notify] to false when calling from
+  /// [State.dispose].
+  Future<bool> trackDraft({
+    required Object key,
+    required String source,
+    required String value,
+    required Future<bool> Function() save,
+    bool notify = true,
+  }) => _drafts.track(
+    key: key,
+    source: source,
+    value: value,
+    save: save,
+    notify: notify,
   );
 
   /// Updates the active controller text for [cellId] without starting editing.
