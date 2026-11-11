@@ -23,10 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `LazyTextFieldEditController.setCommitHandler` / `removeCommitHandler`
   (`LazyTextFieldCommitHandler`) for custom cells that want commit-on-switch.
   `ScopedLazyTextField` registers one automatically while editing.
-- `LazyTextFieldDraftController`: keeps committed drafts beyond the lifetime
-  of their cells and saves them through a background queue. Exposes
-  `draftFor`, `displayText`, `clearDraft`, `pendingSaves`, `enqueue`, and
-  `maybeOf`.
+- Drafts and a background save queue on `LazyTextFieldEditController`:
+  committed values outlive their cells and are saved in the background.
+  New members: `draftFor`, `displayText`, `clearDraft`, `pendingSaves`,
+  `enqueue`, `saveOrder`. Works with the scope's own controller, no setup.
 - `LazyTextFieldDraft` and `LazyTextFieldDraftStatus` (`pending`, `saved`,
   `failed`).
 - `LazyTextFieldSaveOrder`: `sequential` (default, one commit at a time) or
@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or `onCommit`.
 - `LazyTextFieldEditController.whenEditingDone()`: completes when no cell is
   editing; switching cells does not complete it.
-- `LazyTextFieldDraftController.onSavesSettled` (`LazyTextFieldSavesSettled`)
+- `LazyTextFieldEditController.onSavesSettled` (`LazyTextFieldSavesSettled`)
   and `whenSavesSettled()`: signal when the save queue becomes empty, with
   saved/failed counts.
 

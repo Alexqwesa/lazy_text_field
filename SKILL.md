@@ -32,13 +32,14 @@ in `onWillStartEditing`.
 
 ## Background Saves
 
-For server-backed grids, put a `LazyTextFieldDraftController` in the scope and
-give cells `onCommit` (throw to fail) instead of `onSave`. Do not keep your
+For server-backed grids, give cells `onCommit` (throw to fail) instead of
+`onSave`; any `LazyTextFieldEditController` (including the one a scope creates
+itself) handles drafts and the save queue. Do not keep your
 own draft map, save queue, or "return false and close later" logic:
 
 - The cell shows its draft while pending/failed, and a saved draft until
   `text` changes.
-- Read `LazyTextFieldDraftController.maybeOf(context)?.draftFor(key)?.status`
+- Read `LazyTextFieldControllerScope.maybeOf(context)?.draftFor(key)?.status`
   to style pending/saved/failed cells.
 - `saveOrder: LazyTextFieldSaveOrder.sequential` (default) never overlaps
   commits; `perRow` with `rowKey` runs different rows in parallel.

@@ -49,13 +49,13 @@ void main() {
     saved = [];
   });
 
-  Future<LazyTextFieldDraftController> pumpCells(
+  Future<LazyTextFieldEditController> pumpCells(
     WidgetTester tester, {
     List<_Cell> cells = const [_Cell('a'), _Cell('b')],
     LazyTextFieldSaveOrder saveOrder = LazyTextFieldSaveOrder.sequential,
     LazyTextFieldSubmitClose closeOnSubmit = LazyTextFieldSubmitClose.afterSave,
   }) async {
-    final controller = LazyTextFieldDraftController(saveOrder: saveOrder);
+    final controller = LazyTextFieldEditController(saveOrder: saveOrder);
     addTearDown(controller.dispose);
     sources = ValueNotifier({
       for (final cell in cells) cell.id: 'old-${cell.id}',
@@ -417,7 +417,7 @@ void main() {
     testWidgets('enqueue of the pending value returns the running save', (
       tester,
     ) async {
-      final controller = LazyTextFieldDraftController();
+      final controller = LazyTextFieldEditController();
       addTearDown(controller.dispose);
       final commit = server.commitFor('k');
       final first = controller.enqueue(
@@ -440,7 +440,7 @@ void main() {
     });
 
     testWidgets('clearDraft hides a running save result', (tester) async {
-      final controller = LazyTextFieldDraftController();
+      final controller = LazyTextFieldEditController();
       addTearDown(controller.dispose);
       final result = controller.enqueue(
         key: 'k',
@@ -457,7 +457,7 @@ void main() {
     });
 
     testWidgets('dispose while saving does not throw', (tester) async {
-      final controller = LazyTextFieldDraftController();
+      final controller = LazyTextFieldEditController();
       final result = controller.enqueue(
         key: 'k',
         source: 'old',
@@ -470,34 +470,42 @@ void main() {
       expect(await result, isTrue);
     });
 
-    testWidgets('maybeOf finds only draft controllers', (tester) async {
-      LazyTextFieldDraftController? found;
-      final controller = LazyTextFieldDraftController();
-      addTearDown(controller.dispose);
+    testWidgets('onCommit works with the scope-owned controller', (
+      tester,
+    ) async {
+      LazyTextFieldEditController? scoped;
       await tester.pumpWidget(
-        LazyTextFieldControllerScope(
-          controller: controller,
-          child: Builder(
-            builder: (context) {
-              found = LazyTextFieldDraftController.maybeOf(context);
-              return const SizedBox();
-            },
+        MaterialApp(
+          home: Scaffold(
+            body: LazyTextFieldControllerScope(
+              child: Builder(
+                builder: (context) {
+                  scoped = LazyTextFieldControllerScope.of(context);
+                  return SizedBox(
+                    width: 300,
+                    child: ScopedLazyTextField(
+                      cellId: 'a',
+                      text: 'old-a',
+                      singleLine: true,
+                      style: _style,
+                      onCommit: server.commitFor('a'),
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
         ),
       );
-      expect(found, same(controller));
-
-      await tester.pumpWidget(
-        LazyTextFieldControllerScope(
-          child: Builder(
-            builder: (context) {
-              found = LazyTextFieldDraftController.maybeOf(context);
-              return const SizedBox();
-            },
-          ),
-        ),
-      );
-      expect(found, isNull);
+      await open(tester, 'a');
+      await type(tester, 'new-a');
+      await submit(tester);
+      expect(server.calls, [('a', 'new-a')]);
+      expect(scoped!.draftFor('a')!.status, LazyTextFieldDraftStatus.pending);
+      server.succeed();
+      await tester.pump();
+      expect(scoped!.isEditing('a'), isFalse);
+      expect(shown(tester, 'a'), 'new-a');
     });
   });
 
@@ -506,7 +514,7 @@ void main() {
       tester,
     ) async {
       final settled = <(int, int)>[];
-      final controller = LazyTextFieldDraftController(
+      final controller = LazyTextFieldEditController(
         onSavesSettled: (saved, failed) => settled.add((saved, failed)),
       );
       addTearDown(controller.dispose);
@@ -554,7 +562,7 @@ void main() {
     });
 
     testWidgets('whenSavesSettled completes at once when idle', (tester) async {
-      final controller = LazyTextFieldDraftController();
+      final controller = LazyTextFieldEditController();
       addTearDown(controller.dispose);
       var done = false;
       unawaited(controller.whenSavesSettled().then((_) => done = true));
@@ -564,7 +572,7 @@ void main() {
 
     testWidgets('onSavesSettled is not called after dispose', (tester) async {
       var calls = 0;
-      final controller = LazyTextFieldDraftController(
+      final controller = LazyTextFieldEditController(
         onSavesSettled: (_, _) => calls++,
       );
       final waiting = controller.whenSavesSettled();

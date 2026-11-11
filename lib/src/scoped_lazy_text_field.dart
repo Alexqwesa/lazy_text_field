@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lazy_text_field/src/lazy_text_field.dart';
 import 'package:lazy_text_field/src/lazy_text_field_controller_scope.dart';
-import 'package:lazy_text_field/src/lazy_text_field_draft_controller.dart';
 import 'package:lazy_text_field/src/lazy_text_field_edit_controller.dart';
 import 'package:lazy_text_field/src/stateful_lazy_text_field.dart';
 
@@ -14,8 +13,7 @@ import 'package:lazy_text_field/src/stateful_lazy_text_field.dart';
 class ScopedLazyTextField extends StatefulWidget {
   /// Creates a lazy text field backed by the nearest controller scope.
   ///
-  /// Provide exactly one of [onSave] or [onCommit]. [onCommit] requires a
-  /// [LazyTextFieldDraftController] in the scope.
+  /// Provide exactly one of [onSave] or [onCommit].
   const ScopedLazyTextField({
     required this.cellId,
     required this.text,
@@ -66,18 +64,18 @@ class ScopedLazyTextField extends StatefulWidget {
   /// That editor is already closed, so returning false only skips [onSaved].
   final LazyTextFieldSave? onSave;
 
-  /// Background commit path; requires a [LazyTextFieldDraftController].
+  /// Background commit path through the scope's save queue.
   ///
   /// The committed text becomes a draft that the cell keeps showing while it
   /// saves, and after it saved until [text] changes. Complete normally on
   /// success; throw to mark the draft failed. Commits are queued by the
-  /// controller's [LazyTextFieldDraftController.saveOrder].
+  /// controller's [LazyTextFieldEditController.saveOrder].
   ///
   /// Submitting unchanged text closes the editor without a commit, unless the
   /// draft failed (then it retries).
   final LazyTextFieldCommit? onCommit;
 
-  /// Identifies this cell's draft in the [LazyTextFieldDraftController].
+  /// Identifies this cell's draft in the [LazyTextFieldEditController].
   ///
   /// Defaults to [cellId]. Use a shared key when the same value is shown in
   /// several cells.
@@ -218,12 +216,6 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       _editController = editController;
     }
 
-    assert(
-      widget.onCommit == null || editController is LazyTextFieldDraftController,
-      'ScopedLazyTextField.onCommit requires a LazyTextFieldDraftController '
-      'in the LazyTextFieldControllerScope.',
-    );
-
     final controller = editController.controllerFor(widget.cellId);
     final focusNode = editController.focusNodeFor(widget.cellId);
     final isEditing = controller != null && focusNode != null;
@@ -280,11 +272,9 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     );
   }
 
-  LazyTextFieldDraftController? get _drafts {
-    if (widget.onCommit == null) return null;
-    final controller = _editController;
-    return controller is LazyTextFieldDraftController ? controller : null;
-  }
+  /// The controller when this cell commits through drafts, else null.
+  LazyTextFieldEditController? get _drafts =>
+      widget.onCommit == null ? null : _editController;
 
   Object get _draftKey => widget.draftKey ?? widget.cellId;
 

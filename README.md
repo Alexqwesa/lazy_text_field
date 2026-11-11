@@ -118,9 +118,10 @@ final editController = LazyTextFieldEditController(
 
 ### Background saves with drafts
 
-For grids that save to a server, use `LazyTextFieldDraftController` and
-`onCommit` instead of `onSave`. A committed value becomes a *draft* that the
-cell keeps showing after its editor closes:
+For grids that save to a server, give cells `onCommit` instead of `onSave`.
+No extra setup is needed: the scope's controller (your own
+`LazyTextFieldEditController` or the one the scope creates) keeps a *draft*
+of each committed value and shows it after the editor closes:
 
 - **pending** while it is queued or saving,
 - **saved** until the cell's `text` changes (the refreshed value arrives;
@@ -129,12 +130,7 @@ cell keeps showing after its editor closes:
   in that cell, or `clearDraft` is called.
 
 ```dart
-final drafts = LazyTextFieldDraftController(); // saves one at a time
-
-LazyTextFieldControllerScope(
-  controller: drafts,
-  child: grid,
-);
+LazyTextFieldControllerScope(child: grid); // saves one at a time
 
 // In a cell:
 ScopedLazyTextField(
@@ -146,7 +142,7 @@ ScopedLazyTextField(
 );
 
 // Status for your own decoration (rebuilds when drafts change):
-final status = LazyTextFieldDraftController.maybeOf(context)
+final status = LazyTextFieldControllerScope.maybeOf(context)
     ?.draftFor('${item.id}/name')
     ?.status;
 ```
@@ -163,7 +159,8 @@ final status = LazyTextFieldDraftController.maybeOf(context)
 - `draftKey` (default `cellId`) lets several cells share one draft.
 
 **Save order.** `onCommit` runs when its turn in the queue comes, so it can
-read state written by earlier saves (for example a row version).
+read state written by earlier saves (for example a row version). Pass
+`saveOrder` to your own `LazyTextFieldEditController` to change it.
 
 | `saveOrder`                     | Behavior                                                                                                          |
 |---------------------------------|-------------------------------------------------------------------------------------------------------------------|
@@ -179,13 +176,13 @@ user's unsaved text. Two signals let the host time its refreshes:
   editing (immediately if none is). Switching from one cell to another does
   not complete it. Await it before applying fetched rows; check `activeIds`
   again afterwards if editing may have restarted.
-- `LazyTextFieldDraftController(onSavesSettled: (saved, failed) { ... })` is
+- `LazyTextFieldEditController(onSavesSettled: (saved, failed) { ... })` is
   called each time the save queue becomes empty, with counts since it was
   last empty. Refresh once there instead of after every save.
   `whenSavesSettled()` is the awaitable form.
 
 ```dart
-late final drafts = LazyTextFieldDraftController(
+late final drafts = LazyTextFieldEditController(
   onSavesSettled: (saved, _) {
     if (saved > 0) reloadPage();
   },
