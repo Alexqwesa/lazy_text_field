@@ -30,6 +30,22 @@ immediately; `false` from that call only skips `onSaved`. Pass
 to drop the text instead (2.0 behavior). Do not reimplement commit-on-switch
 in `onWillStartEditing`.
 
+## Background Saves
+
+For server-backed grids, put a `LazyTextFieldDraftController` in the scope and
+give cells `onCommit` (throw to fail) instead of `onSave`. Do not keep your
+own draft map, save queue, or "return false and close later" logic:
+
+- The cell shows its draft while pending/failed, and a saved draft until
+  `text` changes.
+- Read `LazyTextFieldDraftController.maybeOf(context)?.draftFor(key)?.status`
+  to style pending/saved/failed cells.
+- `saveOrder: LazyTextFieldSaveOrder.sequential` (default) never overlaps
+  commits; `perRow` with `rowKey` runs different rows in parallel.
+- `onCommit` runs when its queue turn comes; compute request state such as
+  expected versions inside it.
+- Map errors with `errorMessageOf`; Escape discards a failed draft.
+
 ## Direct LazyTextField
 
 ```dart

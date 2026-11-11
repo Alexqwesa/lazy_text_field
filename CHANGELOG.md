@@ -23,6 +23,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `LazyTextFieldEditController.setCommitHandler` / `removeCommitHandler`
   (`LazyTextFieldCommitHandler`) for custom cells that want commit-on-switch.
   `ScopedLazyTextField` registers one automatically while editing.
+- `LazyTextFieldDraftController`: keeps committed drafts beyond the lifetime
+  of their cells and saves them through a background queue. Exposes
+  `draftFor`, `displayText`, `clearDraft`, `pendingSaves`, `enqueue`, and
+  `maybeOf`.
+- `LazyTextFieldDraft` and `LazyTextFieldDraftStatus` (`pending`, `saved`,
+  `failed`).
+- `LazyTextFieldSaveOrder`: `sequential` (default, one commit at a time) or
+  `perRow` (different `rowKey`s save in parallel).
+- `ScopedLazyTextField.onCommit`, `draftKey`, `rowKey`, `closeOnSubmit`
+  (`LazyTextFieldSubmitClose.afterSave` / `immediately`), and
+  `errorMessageOf`. `onSave` is now optional; provide exactly one of `onSave`
+  or `onCommit`.
 
 ## [2.0.2] - 2026-10-13
 

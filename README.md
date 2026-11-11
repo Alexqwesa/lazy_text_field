@@ -116,6 +116,60 @@ final editController = LazyTextFieldEditController(
 > for a cell that is no longer editing, or pass
 > `LazyTextFieldSwitchPolicy.discard`.
 
+### Background saves with drafts
+
+For grids that save to a server, use `LazyTextFieldDraftController` and
+`onCommit` instead of `onSave`. A committed value becomes a *draft* that the
+cell keeps showing after its editor closes:
+
+- **pending** while it is queued or saving,
+- **saved** until the cell's `text` changes (the refreshed value arrives;
+  stale refreshes that still return an older value are ignored),
+- **failed** if `onCommit` threw, until it is saved again, Escape is pressed
+  in that cell, or `clearDraft` is called.
+
+```dart
+final drafts = LazyTextFieldDraftController(); // saves one at a time
+
+LazyTextFieldControllerScope(
+  controller: drafts,
+  child: grid,
+);
+
+// In a cell:
+ScopedLazyTextField(
+  cellId: '${item.id}/name',
+  text: item.name,
+  rowKey: item.id,
+  onCommit: (value) => api.updateName(item.id, value), // throw to fail
+  errorMessageOf: (error) => 'Not saved: $error',
+);
+
+// Status for your own decoration (rebuilds when drafts change):
+final status = LazyTextFieldDraftController.maybeOf(context)
+    ?.draftFor('${item.id}/name')
+    ?.status;
+```
+
+- Clicking another cell focuses it immediately and queues the previous
+  cell's draft.
+- `closeOnSubmit` decides when Enter / Ctrl+S / tap outside close the editor:
+  `afterSave` (default) keeps it open until the save succeeds and closes it
+  only if the text did not change meanwhile; `immediately` closes at once.
+- Submitting unchanged text closes the editor without a commit, unless the
+  draft failed (then it retries).
+- A failed draft's error is shown in the `errorMessage` popup while that cell
+  is editing; typing hides it until the next commit.
+- `draftKey` (default `cellId`) lets several cells share one draft.
+
+**Save order.** `onCommit` runs when its turn in the queue comes, so it can
+read state written by earlier saves (for example a row version).
+
+| `saveOrder`                     | Behavior                                                                                                          |
+|---------------------------------|-------------------------------------------------------------------------------------------------------------------|
+| `sequential` (default)          | One commit at a time, in queue order.                                                                             |
+| `perRow`                        | Commits with the same `rowKey` run in order; different rows run in parallel. Cells without `rowKey` share a queue. |
+
 ## Decorations support and stability
 
 `LazyTextField` uses Flutter's native `InputDecoration` and keeps the same
