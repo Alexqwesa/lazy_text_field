@@ -11,6 +11,12 @@ Keep this package pure Flutter and application-agnostic. It owns the lazy field
 widgets, edit controller/scope, text viewport measurement, native decoration
 integration, transition tests, and examples.
 
+Drafts and the save queue live in `LazyTextFieldDraftQueue`
+(`src/lazy_text_field_drafts.dart`). It is internal: the barrel exports that
+file with `hide LazyTextFieldDraftQueue`, and `LazyTextFieldEditController`
+forwards its public draft members to it. Keep queue logic there and
+widget-free; test it in `test/lazy_text_field_draft_queue_test.dart`.
+
 ## Lazy Rendering Rules
 
 - Do not allocate `TextEditingController`, `FocusNode`, `ScrollController`,

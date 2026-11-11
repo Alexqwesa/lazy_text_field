@@ -9,6 +9,7 @@ library;
 
 export 'src/lazy_text_field.dart';
 export 'src/lazy_text_field_controller_scope.dart';
+export 'src/lazy_text_field_drafts.dart' hide LazyTextFieldDraftQueue;
 export 'src/lazy_text_field_edit_controller.dart';
 export 'src/lazy_text_field_keys.dart';
 export 'src/lazy_text_field_layout.dart';

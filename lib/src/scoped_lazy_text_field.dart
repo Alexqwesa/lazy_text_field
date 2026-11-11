@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lazy_text_field/src/lazy_text_field.dart';
 import 'package:lazy_text_field/src/lazy_text_field_controller_scope.dart';
+import 'package:lazy_text_field/src/lazy_text_field_drafts.dart';
 import 'package:lazy_text_field/src/lazy_text_field_edit_controller.dart';
 import 'package:lazy_text_field/src/stateful_lazy_text_field.dart';
 
