@@ -166,7 +166,10 @@ void main() {
       await pump();
       await tester.pump();
 
-      expect(find.byKey(LazyTextFieldKeys.errorPopup('overlay')), findsOneWidget);
+      expect(
+        find.byKey(LazyTextFieldKeys.errorPopup('overlay')),
+        findsOneWidget,
+      );
       expect(tester.getRect(root), rootBefore);
       expect(tester.getRect(viewport), viewportBefore);
 

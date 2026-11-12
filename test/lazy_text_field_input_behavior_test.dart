@@ -230,62 +230,63 @@ void main() {
       expect('$exception', contains('errorText'));
     });
 
-    testWidgets('supported decorations do not trip the stable-decoration assert', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        _InputApp(
-          child: SizedBox(
-            width: 200,
-            child: LazyTextField(
-              cellId: 'supported-decoration',
-              text: 'value',
-              isEditing: false,
-              style: style,
-              decoration: const InputDecoration(
-                filled: true,
-                border: OutlineInputBorder(),
-                labelText: 'Label',
-                hintText: 'Hint',
-                helperText: 'Helper',
-                counterText: '3/10',
-                prefixIcon: Icon(Icons.notes),
-                suffixIcon: Icon(Icons.check),
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
+    testWidgets(
+      'supported decorations do not trip the stable-decoration assert',
+      (tester) async {
+        await tester.pumpWidget(
+          _InputApp(
+            child: SizedBox(
+              width: 200,
+              child: LazyTextField(
+                cellId: 'supported-decoration',
+                text: 'value',
+                isEditing: false,
+                style: style,
+                decoration: const InputDecoration(
+                  filled: true,
+                  border: OutlineInputBorder(),
+                  labelText: 'Label',
+                  hintText: 'Hint',
+                  helperText: 'Helper',
+                  counterText: '3/10',
+                  prefixIcon: Icon(Icons.notes),
+                  suffixIcon: Icon(Icons.check),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                 ),
+                onStartEditing: () {},
               ),
-              onStartEditing: () {},
             ),
           ),
-        ),
-      );
+        );
 
-      expect(tester.takeException(), isNull);
-      expect(
-        LazyTextField.isDecorationLayoutStable(
-          const InputDecoration(
-            labelText: 'Label',
-            helperText: 'Helper',
-            counterText: '1',
+        expect(tester.takeException(), isNull);
+        expect(
+          LazyTextField.isDecorationLayoutStable(
+            const InputDecoration(
+              labelText: 'Label',
+              helperText: 'Helper',
+              counterText: '1',
+            ),
           ),
-        ),
-        isTrue,
-      );
-      expect(
-        LazyTextField.isDecorationLayoutStable(
-          const InputDecoration(errorText: 'bad'),
-        ),
-        isFalse,
-      );
-      expect(
-        LazyTextField.isDecorationLayoutStable(
-          InputDecoration(error: const Text('bad')),
-        ),
-        isFalse,
-      );
-    });
+          isTrue,
+        );
+        expect(
+          LazyTextField.isDecorationLayoutStable(
+            const InputDecoration(errorText: 'bad'),
+          ),
+          isFalse,
+        );
+        expect(
+          LazyTextField.isDecorationLayoutStable(
+            InputDecoration(error: const Text('bad')),
+          ),
+          isFalse,
+        );
+      },
+    );
 
     testWidgets('decorator never mounts non-empty errorText from decoration', (
       tester,
