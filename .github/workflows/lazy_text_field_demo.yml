@@ -54,9 +54,13 @@ jobs:
         working-directory: example
         run: flutter test
 
-      - name: Build web demo
+      # The default example at the site root, the table demo under /table/.
+      - name: Build web demos
         working-directory: example
-        run: flutter build web --release -t lib/main_live_demo.dart --base-href /lazy_text_field/
+        run: |
+          flutter build web --release -t lib/main_live_demo.dart --base-href /lazy_text_field/table/ -o build/table
+          flutter build web --release -t lib/main.dart --base-href /lazy_text_field/
+          cp -r build/table build/web/table
 
       - uses: actions/upload-pages-artifact@v4
         with:

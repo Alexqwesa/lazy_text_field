@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lazy_text_field/lazy_text_field.dart';
-import 'package:lazy_text_field_example/main_saving_demo.dart';
+import 'package:lazy_text_field_example/main.dart';
 
 void main() {
   late MockApi api;
 
-  setUp(() => api = MockApi(rowCount: 40, latency: Duration.zero));
+  late List<ApiRow> original;
+
+  setUp(() {
+    api = MockApi(rowCount: 40, latency: Duration.zero);
+    original = api.fetchAll();
+  });
 
   Future<void> pumpDemo(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1600, 1000);
@@ -88,7 +93,7 @@ void main() {
     await tester.tap(cell(2, Field.title));
     await settle(tester);
 
-    expect(api.fetchAll().first.title, 'Task 1');
+    expect(api.fetchAll().first.title, original.first.title);
     expect(find.byIcon(Icons.error_outline), findsOneWidget);
     final failed = draft(tester, 1, Field.title)!;
     expect(failed.status, LazyTextFieldDraftStatus.failed);
@@ -134,6 +139,6 @@ void main() {
     expect(restored.status, LazyTextFieldDraftStatus.unsaved);
     expect(restored.value, 'Survives restart');
     expect(find.byIcon(Icons.edit_note), findsOneWidget);
-    expect(api.fetchAll()[2].title, 'Task 3');
+    expect(api.fetchAll()[2].title, original[2].title);
   });
 }

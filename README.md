@@ -21,14 +21,22 @@ for validation without layout shifts.
 
 [Open the live demo](https://alexqwesa.github.io/lazy_text_field/)
 
-The demo covers native decoration, constrained wrapping, bounded editing,
-overflow markers, selection policies, and lazy controller allocation.
-The whole page mounts only one real `TextField` / `EditableText` at a time.
+The demo is the default example: `ScopedLazyTextField` cells in a list that
+unmounts them, saved to a mock API that can be slow or fail. Switches cover
+the save options (`switchPolicy`, `saveMode`, `saveOrder`, a draft store),
+cell heights, edit selection, and text style; a status bar and an event log
+show drafts and saves.
 
-Run it locally:
+[The table demo](https://alexqwesa.github.io/lazy_text_field/table/) covers
+native decoration, constrained wrapping, bounded editing, overflow markers,
+selection policies, and lazy controller allocation. The whole page mounts
+only one real `TextField` / `EditableText` at a time.
+
+Run them locally:
 
 ```sh
 cd example
+flutter run -d chrome
 flutter run -d chrome -t lib/main_live_demo.dart
 ```
 

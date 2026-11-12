@@ -99,8 +99,10 @@ fixes from 2.0.3. The changes to `ScopedLazyTextField` and
   - Store calls run one at a time, in order.
   - `whenDraftsStored()` retries failed writes and reports whether every
     draft is stored. `draftStoreErrors` lists the failed writes.
-- Example `example/lib/main_saving_demo.dart`: a mock API that can be slow
-  or fail, a list that unmounts cells, and switches for the save options.
+- New default example `example/lib/main.dart`: cells in a list that
+  unmounts them, saved to a mock API that can be slow or fail, with
+  switches for the save options, cell heights, and text style. The
+  previous small example is now `example/lib/main_simple.dart`.
 
 ## [2.0.3] - 2026-11-12
 
