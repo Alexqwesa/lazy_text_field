@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -129,6 +130,7 @@ class LazyTextField extends StatefulWidget {
     this.expands,
     this.scrollController,
     this.scrollPhysics,
+    this.chainEditorScroll = true,
     this.enabled,
     this.readOnly = false,
     this.autofocus = true,
@@ -389,6 +391,19 @@ class LazyTextField extends StatefulWidget {
 
   /// Scroll physics for the internal editor.
   final ScrollPhysics? scrollPhysics;
+
+  /// {@template lazy_text_field.chainEditorScroll}
+  /// Whether a mouse-wheel scroll over the editor moves the surrounding
+  /// scrollable (a page or grid) once the editor's text has scrolled to its
+  /// top or bottom.
+  ///
+  /// True (default) is Flutter's usual behavior. Set it to false to keep the
+  /// page still while the pointer is over an editor whose text is taller
+  /// than the editor (with [maxHeight] or [editingMaxHeight]). Editors whose
+  /// text fits, single-line editors, and read-only cells never hold the
+  /// scroll.
+  /// {@endtemplate}
+  final bool chainEditorScroll;
 
   /// Passed through to the internal [TextField.enabled].
   final bool? enabled;
@@ -810,6 +825,7 @@ class _LazyTextFieldState extends State<LazyTextField> {
       maxLines: widget.maxLines,
       expands: widget.expands,
       scrollPhysics: widget.scrollPhysics,
+      chainEditorScroll: widget.chainEditorScroll,
       enabled: effectiveEnabled,
       readOnly: widget.readOnly,
       autofocus: widget.autofocus,
@@ -1089,6 +1105,7 @@ class _LazyTextFieldContent extends StatelessWidget {
     this.maxLines,
     this.expands,
     this.scrollPhysics,
+    required this.chainEditorScroll,
     this.showCursor,
     this.enableInteractiveSelection,
     this.selectionControls,
@@ -1142,6 +1159,7 @@ class _LazyTextFieldContent extends StatelessWidget {
   final int? maxLines;
   final bool? expands;
   final ScrollPhysics? scrollPhysics;
+  final bool chainEditorScroll;
   final bool enabled;
   final bool readOnly;
   final bool autofocus;
@@ -1240,6 +1258,7 @@ class _LazyTextFieldContent extends StatelessWidget {
                             maxLines: maxLines,
                             expands: expands,
                             scrollPhysics: scrollPhysics,
+                            chainEditorScroll: chainEditorScroll,
                             enabled: enabled,
                             readOnly: readOnly,
                             autofocus: autofocus,
@@ -1845,6 +1864,7 @@ class _EditorBody extends StatelessWidget {
     this.maxLines,
     this.expands,
     this.scrollPhysics,
+    this.chainEditorScroll = true,
     this.enabled,
     this.readOnly = false,
     this.autofocus = true,
@@ -1884,6 +1904,7 @@ class _EditorBody extends StatelessWidget {
   final int? maxLines;
   final bool? expands;
   final ScrollPhysics? scrollPhysics;
+  final bool chainEditorScroll;
   final bool? enabled;
   final bool readOnly;
   final bool autofocus;
@@ -1972,10 +1993,22 @@ class _EditorBody extends StatelessWidget {
         ).copyWith(thickness: WidgetStateProperty.all(0)),
         child: ScrollConfiguration(
           behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-          child: field,
+          child: chainEditorScroll || singleLine
+              ? field
+              : Listener(onPointerSignal: _holdScrollAtEdge, child: field),
         ),
       ),
     );
+  }
+
+  // The editor's own scrollable sees the event first and claims it when it
+  // can scroll. When it cannot (its text is at the top or bottom), claim it
+  // here so the surrounding scrollable does not move. Text that fits lets
+  // the page scroll.
+  void _holdScrollAtEdge(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || !scrollController.hasClients) return;
+    if (scrollController.position.maxScrollExtent <= 0) return;
+    GestureBinding.instance.pointerSignalResolver.register(event, (_) {});
   }
 }
 

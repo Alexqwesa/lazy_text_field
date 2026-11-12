@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -123,6 +124,45 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
   });
 
+  for (final chain in [true, false]) {
+    testWidgets('Fixed height: the wheel past the end of a note editor '
+        '${chain ? 'scrolls' : 'does not scroll'} the list', (tester) async {
+      await pumpDemo(tester);
+      await tester.tap(find.text('Fixed'));
+      await tester.pump();
+      if (!chain) {
+        await tester.tap(find.text('Scroll list at editor end'));
+        await tester.pump();
+      }
+      // Row 1's note has four lines in a two-line cell.
+      await tester.tap(cell(1, Field.note));
+      await tester.pump();
+      await tester.pump();
+      expect(controllerOf(tester).isEditing(cellKey(1, Field.note)), isTrue);
+
+      final list = tester
+          .state<ScrollableState>(
+            find
+                .ancestor(
+                  of: cell(1, Field.note),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          )
+          .position;
+      final pointer = TestPointer(1, PointerDeviceKind.mouse);
+      await tester.sendEventToBinding(
+        pointer.hover(tester.getCenter(cell(1, Field.note))),
+      );
+      for (var i = 0; i < 3; i++) {
+        await tester.sendEventToBinding(pointer.scroll(const Offset(0, 200)));
+        await tester.pump();
+      }
+
+      expect(list.pixels, chain ? greaterThan(0) : 0);
+    });
+  }
+
   testWidgets('Restart keeps open text through the draft store', (
     tester,
   ) async {
@@ -132,7 +172,7 @@ void main() {
     // Unmount the editor: tapping Restart while it is open would submit it.
     await scrollRowsTo(tester, end: true);
     await scrollRowsTo(tester, end: false);
-    await tester.tap(find.text('Restart (new controller)'));
+    await tester.tap(find.text('Restart'));
     await settle(tester);
 
     final restored = draft(tester, 3, Field.title)!;
@@ -140,5 +180,26 @@ void main() {
     expect(restored.value, 'Survives restart');
     expect(find.byIcon(Icons.edit_note), findsOneWidget);
     expect(api.fetchAll()[2].title, original[2].title);
+  });
+
+  testWidgets('a restored draft over changed server data shows a warning', (
+    tester,
+  ) async {
+    await pumpDemo(tester);
+
+    await edit(tester, 3, Field.title, 'My edit');
+    await scrollRowsTo(tester, end: true);
+    await scrollRowsTo(tester, end: false);
+    await tester.tap(find.text('Restart, data changed on server'));
+    await settle(tester);
+
+    expect(
+      api.fetchAll()[2].title,
+      '${original[2].title} (edited by someone else)',
+    );
+    final restored = draft(tester, 3, Field.title)!;
+    expect(restored.value, 'My edit');
+    expect(restored.baseText, original[2].title);
+    expect(find.byIcon(Icons.warning_amber), findsOneWidget);
   });
 }

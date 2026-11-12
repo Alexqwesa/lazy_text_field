@@ -560,6 +560,12 @@ Example: `minHeight: 20, maxHeight: 20, editingMaxHeight: 60`
 With `editingMaxHeight: double.infinity`, the last row becomes an editor of
 100 px that does not scroll, reporting 80.
 
+When an editor scrolls and its text reaches the top or bottom, further
+mouse-wheel scrolling moves the surrounding page or grid, as in any Flutter
+app. Pass `chainEditorScroll: false` to keep the page still while the pointer
+is over such an editor. Editors whose text fits, and read-only cells, still
+let the page scroll.
+
 ### Growing a row while a cell edits
 
 Grid rows usually have a fixed height that clips long text. To let the editor

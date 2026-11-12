@@ -38,6 +38,7 @@ class ScopedLazyTextField extends StatefulWidget {
     this.scrollbarAlignment = LazyTextField.defaultScrollbarAlignment,
     this.startEditSelection = LazyTextFieldStartEditSelection.end,
     this.readOnlyAsLink = false,
+    this.chainEditorScroll = true,
     this.allowMultipleActiveEdits = false,
     this.inputFormatters,
     this.onChanged,
@@ -161,6 +162,9 @@ class ScopedLazyTextField extends StatefulWidget {
 
   /// Whether read-only text should use link-like cursor/gesture behavior.
   final bool readOnlyAsLink;
+
+  /// {@macro lazy_text_field.chainEditorScroll}
+  final bool chainEditorScroll;
 
   /// Whether this field can edit while other scoped fields remain active.
   final bool allowMultipleActiveEdits;
@@ -399,6 +403,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       scrollbarThickness: widget.scrollbarThickness,
       scrollbarAlignment: widget.scrollbarAlignment,
       readOnlyAsLink: widget.readOnlyAsLink,
+      chainEditorScroll: widget.chainEditorScroll,
       inputFormatters: widget.inputFormatters,
       onChanged: _handleDraftChanged,
       keyboardType: widget.keyboardType,

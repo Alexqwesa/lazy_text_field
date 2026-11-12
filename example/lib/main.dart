@@ -225,8 +225,28 @@ class MockApi extends ChangeNotifier {
     notifyListeners();
   }
 
-  void resetCounters() {
+  /// Starts counting [maxInFlight] again, after a settings change.
+  void resetMaxInFlight() {
     maxInFlight = inFlight;
+    notifyListeners();
+  }
+
+  /// Another user changes these fields on the server.
+  void editElsewhere(Iterable<String> keys) {
+    for (final key in keys) {
+      final (id, field) = parseCellKey(key);
+      final row = _rows.firstWhere((row) => row.id == id);
+      final value = row.valueOf(field);
+      row
+        ..set(
+          field,
+          value.isEmpty
+              ? 'Edited by someone else'
+              : '$value (edited by someone else)',
+        )
+        ..version += 1;
+      log?.call('Someone else changed $key on the server');
+    }
     notifyListeners();
   }
 
@@ -313,6 +333,10 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
   double _fontSize = 14;
   bool _bold = false;
   bool _italic = false;
+
+  /// Fixed height: whether the wheel scrolls the list once a note's editor
+  /// reached its end (Flutter's default).
+  bool _chainEditorScroll = true;
 
   /// ListView's default keeps a focused TextField alive after it scrolls
   /// away. Grids that recycle cells do not; off here, so cells unmount.
@@ -468,7 +492,11 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
       _controller = _createController();
       _generation++;
       _onSaveErrors.clear();
+      // A restarted app fetches its data again.
+      _rows = _api.fetchAll();
+      _indexById = _indexRows(_rows);
     });
+    _api.resetMaxInFlight();
     // The old cells are disposed in this frame and keep their open text in
     // the old controller, which writes it to the store.
     await SchedulerBinding.instance.endOfFrame;
@@ -489,6 +517,22 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
   }
 
   void _update(VoidCallback apply) => setState(apply);
+
+  /// Restart after someone else changed, on the server, the fields that
+  /// have drafts here (or a few fields, when there are none).
+  Future<void> _restartWithServerChanges() async {
+    final drafted = [
+      for (final MapEntry(:key, value: draft) in _controller.drafts.entries)
+        if (key is String && draft.status != LazyTextFieldDraftStatus.saved)
+          key,
+    ];
+    _api.editElsewhere(
+      drafted.isNotEmpty
+          ? drafted
+          : [cellKey(1, Field.title), cellKey(2, Field.note)],
+    );
+    await _restart('Restart, data changed on the server', () {});
+  }
 
   void _changeController(String what, VoidCallback apply) {
     unawaited(_restart('Changed $what', apply));
@@ -686,6 +730,7 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
               editingMaxHeight: isNote && _noteHeight == NoteHeight.editFull
                   ? double.infinity
                   : null,
+              chainEditorScroll: _chainEditorScroll,
               startEditSelection: _startEditSelection,
               decoration: _decoration(context, field),
               onCommit: useCommit
@@ -710,7 +755,7 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
               },
             ),
           ),
-          _DraftBadge(draftKey: key),
+          _DraftBadge(draftKey: key, source: row.valueOf(field)),
         ],
       ),
     );
@@ -744,11 +789,19 @@ class _Header extends StatelessWidget {
   }
 }
 
+String _short(String text) {
+  final line = text.replaceAll('\n', ' ⏎ ');
+  return line.length <= 60 ? line : '${line.substring(0, 60)}…';
+}
+
 /// Shows the save state of one cell's draft.
 class _DraftBadge extends StatelessWidget {
-  const _DraftBadge({required this.draftKey});
+  const _DraftBadge({required this.draftKey, required this.source});
 
   final String draftKey;
+
+  /// The cell's current value from the server.
+  final String source;
 
   @override
   Widget build(BuildContext context) {
@@ -756,7 +809,24 @@ class _DraftBadge extends StatelessWidget {
       context,
     )?.draftFor(draftKey);
     final colors = Theme.of(context).colorScheme;
+    // baseText is the value the user started from. If the server value
+    // changed since, saving the draft overwrites someone else's change.
+    final conflict =
+        draft != null &&
+        (draft.status == LazyTextFieldDraftStatus.unsaved ||
+            draft.status == LazyTextFieldDraftStatus.failed) &&
+        draft.baseText != source;
     final (icon, color, tooltip) = switch (draft?.status) {
+      _ when conflict => (
+        Icons.warning_amber,
+        colors.error,
+        'Changed on the server after you edited it.\n'
+            'Server now: "${_short(source)}"\n'
+            'Your text: "${_short(draft.value)}"\n'
+            'Saving overwrites the server value. To keep it instead, open '
+            'the cell and press Escape.\n'
+            '(The demo compares draft.baseText with the server value.)',
+      ),
       null => (null, null, ''),
       LazyTextFieldDraftStatus.unsaved => (
         Icons.edit_note,
@@ -849,15 +919,33 @@ class _Toolbar extends StatelessWidget {
           Tooltip(
             message:
                 'Simulates closing and reopening the app: a new edit '
-                'controller, so everything in memory is gone.\n'
+                'controller and fresh data, so everything in memory is '
+                'gone.\n'
                 'With "Draft store" on, unsaved and failed edits come back '
-                '(loadDrafts).',
+                '(loadDrafts) over the unchanged server data.',
             child: OutlinedButton.icon(
               onPressed: busy
                   ? null
                   : () => unawaited(state._restart('Restart', () {})),
               icon: const Icon(Icons.restart_alt),
-              label: const Text('Restart (new controller)'),
+              label: const Text('Restart'),
+            ),
+          ),
+          Tooltip(
+            message:
+                'Problem: while the app was closed, someone else changed '
+                'the same fields on the server. Restoring the drafts would '
+                'silently overwrite their change.\n'
+                'This changes the fields that have drafts on the server, '
+                'then restarts. With "Draft store" on, those cells show a '
+                'warning icon: the draft\'s baseText no longer matches the '
+                'server value.',
+            child: OutlinedButton.icon(
+              onPressed: busy
+                  ? null
+                  : () => unawaited(state._restartWithServerChanges()),
+              icon: const Icon(Icons.sync_problem),
+              label: const Text('Restart, data changed on server'),
             ),
           ),
         ],
@@ -921,6 +1009,25 @@ class _ViewControls extends StatelessWidget {
               selected: {state._noteHeight},
               onSelectionChanged: (selection) =>
                   set(() => state._noteHeight = selection.single),
+            ),
+          ),
+          Tooltip(
+            message:
+                'Fixed height only: the note editor scrolls inside the '
+                'cell.\n'
+                'Problem: when its text reaches the end, the mouse wheel '
+                'starts scrolling the whole list, and the cell being edited '
+                'slides away.\n'
+                'On: Flutter\'s default, the list scrolls on.\n'
+                'Off: the wheel stays in the editor '
+                '(chainEditorScroll: false).',
+            child: FilterChip(
+              avatar: const Icon(Icons.swap_vert, size: 18),
+              label: const Text('Scroll list at editor end'),
+              selected: state._chainEditorScroll,
+              onSelected: state._noteHeight == NoteHeight.fixed
+                  ? (value) => set(() => state._chainEditorScroll = value)
+                  : null,
             ),
           ),
           Tooltip(
@@ -1077,10 +1184,19 @@ class _StatusBar extends StatelessWidget {
                 style: style,
               ),
               Text('In draft store: ${store.drafts.length}', style: style),
-              Text(
-                'API: ${api.calls} calls, ${api.inFlight} in flight '
-                '(max ${api.maxInFlight})',
-                style: style,
+              Tooltip(
+                message:
+                    'Saving now: requests the server is handling at this '
+                    'moment.\n'
+                    'Most at once: the largest number of requests running '
+                    'at the same time since the last restart or settings '
+                    'change. With saveOrder sequential it stays at 1; with '
+                    'perRow it can go higher.',
+                child: Text(
+                  'API: ${api.calls} calls, saving now: ${api.inFlight}, '
+                  'most at once: ${api.maxInFlight}',
+                  style: style,
+                ),
               ),
             ],
           ),
@@ -1156,19 +1272,6 @@ class _SettingsPanel extends StatelessWidget {
               ],
             ),
           ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Tooltip(
-              message:
-                  '"Max in flight" in the status bar is how many saves ran '
-                  'at the same time. Reset it, then compare saveOrder '
-                  'sequential (always 1) with perRow.',
-              child: TextButton(
-                onPressed: api.resetCounters,
-                child: const Text('Reset "max in flight"'),
-              ),
-            ),
-          ),
           const Divider(height: 32),
           const _SectionTitle('Cells'),
           _Option<SaveCallback>(
@@ -1217,8 +1320,12 @@ class _SettingsPanel extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               title: const _Label('Keep the open editor alive', large: true),
               subtitle: const Text(
-                'ListView addAutomaticKeepAlives. Off: an editor scrolled out '
-                'of view is unmounted, as in grids that recycle cells.',
+                'Off (as in grids that recycle cells): an editor scrolled '
+                'out of view is destroyed. Its text is kept as an unsaved '
+                'draft (pencil icon), shown again when you scroll back, and '
+                'saved when you edit another cell or press "Save all".\n'
+                'On (ListView addAutomaticKeepAlives): the editor stays '
+                'open offscreen with your text.',
               ),
               value: state._keepFocusedEditorAlive,
               onChanged: (value) =>
@@ -1277,8 +1384,9 @@ class _SettingsPanel extends StatelessWidget {
           _Option<LazyTextFieldSaveOrder>(
             label: 'saveOrder',
             help:
-                'perRow saves different rows in parallel (watch "max in '
-                'flight").',
+                'perRow saves different rows in parallel. Watch "most at '
+                'once" in the status bar: 1 with sequential, more with '
+                'perRow when you edit several rows quickly at high latency.',
             why:
                 'Problem: concurrent saves can reach the server out of '
                 'order, and an older value overwrites a newer one.\n'
@@ -1301,12 +1409,15 @@ class _SettingsPanel extends StatelessWidget {
                 'Problem: unsaved and failed edits live only in memory, so '
                 'closing the app or a crash loses them.\n'
                 'A draft store (Hive, a file, ...) keeps them; loadDrafts() '
-                'brings them back. Press "Restart" to try.',
+                'brings them back.\n'
+                'Try: set Failing calls to All, edit a few cells, then '
+                'press "Restart" (or "Restart, data changed on server").',
             child: SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const _Label('Draft store', large: true),
               subtitle: const Text(
-                'Keeps unsaved and failed drafts across a restart.',
+                'Keeps unsaved and failed drafts across a restart. Try: set '
+                'Failing calls to All, edit a few cells, press "Restart".',
               ),
               value: state._persistDrafts,
               onChanged: enabled
@@ -1340,8 +1451,14 @@ class _Tips extends StatelessWidget {
         'including a button, submits the open editor instead.)',
     'With saveMode deferred, edit a few cells, then "Save all in one '
         'request".',
-    'Leave unsaved drafts (scrolled away, failed, or with saveMode '
-        'deferred) and press "Restart" with and without the draft store.',
+    'Set Failing calls to All, edit a few cells, and press "Restart": '
+        'with the draft store your text comes back; without it, it is '
+        'lost.',
+    'Do the same with "Restart, data changed on server": the restored '
+        'drafts show a warning, since saving them would overwrite '
+        'someone else\'s change.',
+    'Height Fixed: open a long note and scroll with the mouse wheel past '
+        'its end, with "Scroll list at editor end" on and off.',
     'Set latency to 3 s, saveOrder perRow, and edit cells of different '
         'rows quickly.',
   ];

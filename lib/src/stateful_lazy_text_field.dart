@@ -31,6 +31,7 @@ class StatefulLazyTextField extends StatefulWidget {
     this.scrollbarAlignment = LazyTextField.defaultScrollbarAlignment,
     this.startEditSelection = LazyTextFieldStartEditSelection.end,
     this.readOnlyAsLink = false,
+    this.chainEditorScroll = true,
     this.inputFormatters,
     this.onChanged,
     this.keyboardType,
@@ -95,6 +96,9 @@ class StatefulLazyTextField extends StatefulWidget {
 
   /// Whether read-only text should use link-like cursor/gesture behavior.
   final bool readOnlyAsLink;
+
+  /// {@macro lazy_text_field.chainEditorScroll}
+  final bool chainEditorScroll;
 
   /// Passed through to the internal [TextField.inputFormatters].
   final List<TextInputFormatter>? inputFormatters;
@@ -181,6 +185,7 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
       scrollbarThickness: widget.scrollbarThickness,
       scrollbarAlignment: widget.scrollbarAlignment,
       readOnlyAsLink: widget.readOnlyAsLink,
+      chainEditorScroll: widget.chainEditorScroll,
       inputFormatters: widget.inputFormatters,
       onChanged: widget.onChanged,
       keyboardType: widget.keyboardType,
