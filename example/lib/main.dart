@@ -119,7 +119,6 @@ class MockApi extends ChangeNotifier {
 
   int calls = 0;
   int inFlight = 0;
-  int maxInFlight = 0;
 
   static const _titles = [
     'Fix login',
@@ -202,7 +201,6 @@ class MockApi extends ChangeNotifier {
   int _begin(String request) {
     final call = ++calls;
     inFlight++;
-    if (inFlight > maxInFlight) maxInFlight = inFlight;
     log?.call('#$call → $request  (in flight: $inFlight)');
     notifyListeners();
     return call;
@@ -222,12 +220,6 @@ class MockApi extends ChangeNotifier {
 
   void _end() {
     inFlight--;
-    notifyListeners();
-  }
-
-  /// Starts counting [maxInFlight] again, after a settings change.
-  void resetMaxInFlight() {
-    maxInFlight = inFlight;
     notifyListeners();
   }
 
@@ -494,7 +486,6 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
       _rows = _api.fetchAll();
       _indexById = _indexRows(_rows);
     });
-    _api.resetMaxInFlight();
     // The old cells are disposed in this frame and keep their open text in
     // the old controller, which writes it to the store.
     await SchedulerBinding.instance.endOfFrame;
@@ -1184,15 +1175,11 @@ class _StatusBar extends StatelessWidget {
               Text('In draft store: ${store.drafts.length}', style: style),
               Tooltip(
                 message:
-                    'Saving now: requests the server is handling at this '
-                    'moment.\n'
-                    'Most at once: the largest number of requests running '
-                    'at the same time since the last restart or settings '
-                    'change. With saveOrder sequential it stays at 1; with '
-                    'perRow it can go higher.',
+                    'Requests the server is handling at this moment. With '
+                    'saveOrder sequential it is at most 1; with perRow it '
+                    'can go higher.',
                 child: Text(
-                  'API: ${api.calls} calls, saving now: ${api.inFlight}, '
-                  'most at once: ${api.maxInFlight}',
+                  'API: ${api.calls} calls, saving now: ${api.inFlight}',
                   style: style,
                 ),
               ),
@@ -1361,8 +1348,8 @@ class _SettingsPanel extends StatelessWidget {
           _Option<LazyTextFieldSaveOrder>(
             label: 'saveOrder',
             help:
-                'perRow saves different rows in parallel. Watch "most at '
-                'once" in the status bar: 1 with sequential, more with '
+                'perRow saves different rows in parallel. Watch "saving now" '
+                'in the status bar: at most 1 with sequential, more with '
                 'perRow when you edit several rows quickly at high latency.',
             why:
                 'Problem: concurrent saves can reach the server out of '
