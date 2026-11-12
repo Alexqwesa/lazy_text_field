@@ -22,17 +22,15 @@ Use `StatefulLazyTextField` for local editing. Use
 `LazyTextFieldControllerScope` with `ScopedLazyTextField` when many cells share
 one edit manager.
 
-When a scoped cell starts editing, the controller closes the others. With the
-default `LazyTextFieldSwitchPolicy.commit` (since 3.0.0) the closed cell's
-`onSave` receives its changed text in the background and the new cell is
-focused immediately; if `onSave` returns `false` or throws, the text stays as
-a failed draft (reopen restores it, Escape discards it). An editing cell that
-is recycled or disposed (virtualized grids, data refresh) is not saved: its
-text becomes an `unsaved` draft, saved when another cell starts editing or by
-`saveDrafts()`, and never saved otherwise. Pass
-`LazyTextFieldEditController(switchPolicy: LazyTextFieldSwitchPolicy.discard)`
-to drop the text instead (2.0 behavior). Do not reimplement commit-on-switch
-in `onWillStartEditing`.
+When a scoped cell starts editing, the controller closes the others. Since
+3.0.0 the closed cell's `onSave` receives its changed text in the background
+and the new cell is focused immediately; if `onSave` returns `false` or
+throws, the text stays as a failed draft (reopen restores it, Escape discards
+it). An editing cell that is recycled or disposed (virtualized grids, data
+refresh) is not saved: its text becomes an `unsaved` draft, saved when another
+cell starts editing or by `saveDrafts()`, and never saved otherwise;
+`clearDraft(key)` drops it. Do not reimplement commit-on-switch in
+`onWillStartEditing`.
 
 ## Background Saves
 

@@ -316,7 +316,6 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
   late Map<int, int> _indexById = _indexRows(_rows);
 
   // Controller settings: changing one creates a new controller.
-  LazyTextFieldSwitchPolicy _switchPolicy = LazyTextFieldSwitchPolicy.commit;
   LazyTextFieldSaveMode _saveMode = LazyTextFieldSaveMode.immediate;
   LazyTextFieldSaveOrder _saveOrder = LazyTextFieldSaveOrder.sequential;
   bool _persistDrafts = true;
@@ -374,7 +373,6 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
 
   LazyTextFieldEditController _createController() {
     return LazyTextFieldEditController(
-      switchPolicy: _switchPolicy,
       saveMode: _saveMode,
       saveOrder: _saveOrder,
       draftStore: _persistDrafts ? _draftStore : null,
@@ -1339,27 +1337,6 @@ class _SettingsPanel extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
-          _Option<LazyTextFieldSwitchPolicy>(
-            label: 'switchPolicy',
-            help:
-                'What happens to an open editor when another cell starts '
-                'editing.',
-            why:
-                'Problem: the user types in a cell, then clicks another one '
-                'without pressing Enter.\n'
-                'commit: the typed text is saved in the background while '
-                'the new cell opens at once.\n'
-                'discard: the text is dropped (the 2.x behavior).',
-            value: state._switchPolicy,
-            values: LazyTextFieldSwitchPolicy.values,
-            labelOf: (value) => value.name,
-            onChanged: enabled
-                ? (value) => state._changeController(
-                    'switchPolicy',
-                    () => state._switchPolicy = value,
-                  )
-                : null,
-          ),
           _Option<LazyTextFieldSaveMode>(
             label: 'saveMode (onCommit)',
             help:

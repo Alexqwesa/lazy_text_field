@@ -63,11 +63,11 @@ class ScopedLazyTextField extends StatefulWidget {
   /// Primary commit path: return true to accept and exit edit mode, or false
   /// to keep editing (e.g. validation failed).
   ///
-  /// Under [LazyTextFieldSwitchPolicy.commit] (the default), an editor that
-  /// closes because another cell starts editing also calls this with its
-  /// changed text. That editor is already closed, so the text is kept as a
-  /// draft: shown while saving, and kept as a failed draft if this returns
-  /// false or throws. Reopening the cell restores it; Escape discards it.
+  /// An editor that closes because another cell starts editing also calls
+  /// this with its changed text. That editor is already closed, so the text
+  /// is kept as a draft: shown while saving, and kept as a failed draft if
+  /// this returns false or throws. Reopening the cell restores it; Escape
+  /// discards it.
   ///
   /// An editor whose cell leaves the tree (recycled, or disposed by a
   /// virtualized grid) does not call this: its text is kept as an
@@ -252,15 +252,13 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     super.dispose();
   }
 
-  /// Closes [config]'s editor and, under [LazyTextFieldSwitchPolicy.commit],
-  /// keeps changed text as an unsaved draft.
+  /// Closes [config]'s editor and keeps changed text as an unsaved draft.
   void _releaseEditor(ScopedLazyTextField config, {required bool notify}) {
     final editController = _editController;
     final editor = editController?.controllerFor(config.cellId);
     if (editController == null || editor == null) return;
     final value = editor.text;
-    if (editController.switchPolicy == LazyTextFieldSwitchPolicy.commit &&
-        _needsSave(editController, config, value)) {
+    if (_needsSave(editController, config, value)) {
       _hold(editController, config, value, notify: false);
     }
     editController.stopEditing(config.cellId, notify: notify);

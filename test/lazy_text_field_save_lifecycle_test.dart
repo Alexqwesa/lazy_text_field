@@ -59,11 +59,8 @@ void main() {
       saved = [];
     });
 
-    Future<void> pumpCells(
-      WidgetTester tester, {
-      LazyTextFieldSwitchPolicy switchPolicy = LazyTextFieldSwitchPolicy.commit,
-    }) {
-      controller = LazyTextFieldEditController(switchPolicy: switchPolicy);
+    Future<void> pumpCells(WidgetTester tester) {
+      controller = LazyTextFieldEditController();
       addTearDown(controller.dispose);
       return tester.pumpWidget(
         _app(
@@ -379,11 +376,8 @@ void main() {
       WidgetTester tester, {
       bool useOnSave = false,
       bool keepAlive = false,
-      LazyTextFieldSwitchPolicy switchPolicy = LazyTextFieldSwitchPolicy.commit,
     }) async {
-      final controller = LazyTextFieldEditController(
-        switchPolicy: switchPolicy,
-      );
+      final controller = LazyTextFieldEditController();
       addTearDown(controller.dispose);
       scroll = ScrollController();
       addTearDown(scroll.dispose);
@@ -571,23 +565,6 @@ void main() {
       await scrollTo(tester, 2000);
       expect(commits, isEmpty);
       expect(controller.draftFor('row-0'), isNull);
-    });
-
-    testWidgets('the discard policy drops the text of a cell scrolled away', (
-      tester,
-    ) async {
-      final controller = await pumpList(
-        tester,
-        switchPolicy: LazyTextFieldSwitchPolicy.discard,
-      );
-      await _open(tester, 'row-0');
-      await _type(tester, 'typed');
-      await scrollTo(tester, 2000);
-      await scrollTo(tester, 0);
-
-      expect(commits, isEmpty);
-      expect(controller.draftFor('row-0'), isNull);
-      expect(_shown(tester, 'row-0'), 'old-0');
     });
 
     testWidgets('a recycled cell keeps the text typed for its old id', (

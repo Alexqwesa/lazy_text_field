@@ -74,12 +74,6 @@ void main() {
     await tester.pump();
   }
 
-  test('commit is the default switch policy', () {
-    final controller = LazyTextFieldEditController();
-    addTearDown(controller.dispose);
-    expect(controller.switchPolicy, LazyTextFieldSwitchPolicy.commit);
-  });
-
   testWidgets('switching cells commits the previous draft in the background', (
     tester,
   ) async {
@@ -129,28 +123,6 @@ void main() {
 
     expect(controller.activeIds, ['b']);
     expect(saved, isEmpty);
-  });
-
-  testWidgets('discard policy drops the previous draft', (tester) async {
-    final controller = LazyTextFieldEditController(
-      switchPolicy: LazyTextFieldSwitchPolicy.discard,
-    );
-    addTearDown(controller.dispose);
-    final saves = <String>[];
-
-    await pumpCells(
-      tester,
-      controller,
-      onSaveA: (value) {
-        saves.add(value);
-        return true;
-      },
-    );
-    await editA(tester, 'a-draft');
-    await tapB(tester);
-
-    expect(saves, isEmpty);
-    expect(controller.activeIds, ['b']);
   });
 
   testWidgets('a submit already saving the same text is not saved twice', (

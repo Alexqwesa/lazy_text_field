@@ -26,8 +26,7 @@ fixes from 2.0.3. The changes to `ScopedLazyTextField` and
 `LazyTextFieldEditController` in short:
 
 - Text left in an editor is now saved or kept as a draft, instead of being
-  dropped. To keep the 2.0 behavior, pass
-  `LazyTextFieldEditController(switchPolicy: LazyTextFieldSwitchPolicy.discard)`.
+  dropped. There is no option to keep the 2.0 behavior.
 - All saves of a cell, including background ones, run in one queue. By
   default, saves of different cells run one at a time too.
 - `onSaved` is called after background saves as well.
@@ -55,8 +54,10 @@ fixes from 2.0.3. The changes to `ScopedLazyTextField` and
     a `draftStore` is set.
   - If a save returns `false` or throws, the text stays as a failed draft:
     reopening the cell restores it, and Escape discards it.
-  - `switchPolicy: LazyTextFieldSwitchPolicy.discard` keeps the 2.0 behavior
-    in all of these cases.
+  - There is no option to drop the text as 2.0 did: clicking anywhere
+    outside the editor already saved it, so only switching cells and
+    leaving the tree dropped it. To drop a kept draft, call
+    `clearDraft(key)`.
 - **Behavior change:** `onSave` calls go through the controller's save
   queue, like the new `onCommit`.
   - Saves of the same cell never overlap, including saves on switch and
@@ -74,8 +75,6 @@ fixes from 2.0.3. The changes to `ScopedLazyTextField` and
 
 #### Added
 
-- `LazyTextFieldSwitchPolicy` (`commit`, `discard`) and
-  `LazyTextFieldEditController.switchPolicy`.
 - Cell options:
   - `onCommit` (throw to fail), an alternative to `onSave`; give exactly one
     of the two.

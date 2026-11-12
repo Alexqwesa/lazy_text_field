@@ -95,24 +95,13 @@ for both in read-only mode.
 ### Switching between scoped cells
 
 When a `ScopedLazyTextField` starts editing, the shared
-`LazyTextFieldEditController` closes the other active cells. Its
-`switchPolicy` decides what happens to their unsaved text:
-
-- `LazyTextFieldSwitchPolicy.commit` (default since 3.0.0): the previous
-  cell's `onSave` (or `onCommit`) is called with its changed text, and the
-  new cell gets focus immediately. The save runs in the background. The
-  previous editor is already closed, so its text is kept as a draft: shown
-  while saving and, if `onSave` returns `false` or throws, kept as a failed
-  draft that reopening the cell restores and Escape discards.
-  Unchanged text is not saved.
-- `LazyTextFieldSwitchPolicy.discard`: the previous text is dropped
-  (2.0 behavior).
-
-```dart
-final editController = LazyTextFieldEditController(
-  switchPolicy: LazyTextFieldSwitchPolicy.discard, // opt out of commit
-);
-```
+`LazyTextFieldEditController` closes the other active cells and saves their
+text, as a tap outside the editor does: the previous cell's `onSave` (or
+`onCommit`) is called with its changed text, and the new cell gets focus
+immediately. The save runs in the background. The previous editor is already
+closed, so its text is kept as a draft: shown while saving and, if `onSave`
+returns `false` or throws, kept as a failed draft that reopening the cell
+restores and Escape discards. Unchanged text is not saved.
 
 An editing cell that leaves the tree without a submit (recycled for another
 `cellId`, or disposed by a virtualized grid that scrolled it away) is not
@@ -124,8 +113,7 @@ stays open.
 > **Behavior change in 3.0.0:** switching cells used to drop the unsaved
 > text. It is now passed to `onSave` / `onCommit`, and text of cells that
 > leave the tree is kept as an unsaved draft. Make `onSave` tolerate being
-> called for a cell that is no longer editing, or pass
-> `LazyTextFieldSwitchPolicy.discard`. See
+> called for a cell that is no longer editing. See
 > [Migrating from 2.x](#migrating-from-2x).
 
 ### Background saves with drafts
@@ -617,14 +605,9 @@ behaviors:
    the text typed in the open one. Now `onSave` is called with it in the
    background, after its editor has closed. Make sure `onSave` does not rely
    on the cell still editing (its controller or context). If `onSave`
-   returns `false` or throws, the text stays as a failed draft. To keep the
-   2.x behavior:
-
-   ```dart
-   final editController = LazyTextFieldEditController(
-     switchPolicy: LazyTextFieldSwitchPolicy.discard,
-   );
-   ```
+   returns `false` or throws, the text stays as a failed draft. There is no
+   option to drop the text as 2.x did; a tap outside the editor already
+   saved it in 2.x too.
 
 2. **Cells that leave the tree keep their text.** A cell recycled for
    another `cellId` or disposed by a virtualized grid while editing keeps

@@ -5,18 +5,6 @@ import 'package:flutter/scheduler.dart';
 import 'package:lazy_text_field/src/lazy_text_field.dart';
 import 'package:lazy_text_field/src/lazy_text_field_drafts.dart';
 
-/// What happens to an active edit when another cell starts editing.
-enum LazyTextFieldSwitchPolicy {
-  /// Close the previous editor and drop its unsaved text (2.0 behavior).
-  discard,
-
-  /// Pass the previous editor's text to its registered commit handler, then
-  /// close it. This is the default.
-  ///
-  /// The new cell gets focus immediately; the commit runs in the background.
-  commit,
-}
-
 /// Receives the text of an editor that is being closed because another cell
 /// started editing.
 typedef LazyTextFieldCommitHandler = void Function(String text);
@@ -33,20 +21,14 @@ class LazyTextFieldEditController extends ChangeNotifier {
   ///
   /// [saveOrder] defaults to [LazyTextFieldSaveOrder.sequential].
   ///
-  /// [switchPolicy] decides whether switching cells commits or discards the
-  /// previous cell's text. Since 3.0.0 it defaults to
-  /// [LazyTextFieldSwitchPolicy.commit]; pass
-  /// [LazyTextFieldSwitchPolicy.discard] for the 2.0 behavior.
+  /// When another cell starts editing, the previous cell's text goes to its
+  /// commit handler (since 3.0.0; 2.x dropped it).
   LazyTextFieldEditController({
-    this.switchPolicy = LazyTextFieldSwitchPolicy.commit,
     this.saveMode = LazyTextFieldSaveMode.immediate,
     this.saveOrder = LazyTextFieldSaveOrder.sequential,
     this.onSavesSettled,
     this.draftStore,
   });
-
-  /// What happens to an active edit when another cell starts editing.
-  final LazyTextFieldSwitchPolicy switchPolicy;
 
   /// When [ScopedLazyTextField.onCommit] cells save.
   ///
@@ -119,7 +101,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
   }
 
   /// Registers [handler] to receive [cellId]'s text when a switch to another
-  /// cell closes it under [LazyTextFieldSwitchPolicy.commit].
+  /// cell closes it.
   ///
   /// Only active cells can register. The handler is removed when the cell
   /// stops editing.
@@ -138,10 +120,10 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// Starts editing [cellId] and returns its active controller.
   ///
   /// Unless [allowMultipleActiveEdits] is true, other active cells are stopped
-  /// before this one starts editing. Under [LazyTextFieldSwitchPolicy.commit]
-  /// their text goes to their commit handlers first, and in
-  /// [LazyTextFieldSaveMode.immediate] unsaved drafts are saved, except the
-  /// one for [draftKey] (default [cellId]), which this editor continues.
+  /// before this one starts editing. Their text goes to their commit handlers
+  /// first, and in [LazyTextFieldSaveMode.immediate] unsaved drafts are
+  /// saved, except the one for [draftKey] (default [cellId]), which this
+  /// editor continues.
   TextEditingController startEditing({
     required String cellId,
     required String initialValue,
@@ -159,8 +141,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
         _switching = false;
       }
     }
-    if (switchPolicy == LazyTextFieldSwitchPolicy.commit &&
-        saveMode == LazyTextFieldSaveMode.immediate) {
+    if (saveMode == LazyTextFieldSaveMode.immediate) {
       // The user moved on: text kept from cells that left the tree is saved.
       _drafts.flushUnsaved(except: draftKey ?? cellId);
     }
@@ -432,8 +413,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
   }
 
   /// Closes every open editor and commits its changed text, as switching to
-  /// another cell does under [LazyTextFieldSwitchPolicy.commit] (whatever
-  /// [switchPolicy] is): `onCommit` cells queue a save (or keep an unsaved
+  /// another cell does: `onCommit` cells queue a save (or keep an unsaved
   /// draft in [LazyTextFieldSaveMode.deferred]); `onSave` cells call it.
   ///
   /// Editors without a commit handler (custom cells that never called
@@ -456,11 +436,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
       final handler = _commitHandlers[cellId];
       final text = _controllers[cellId]?.text;
       try {
-        if (switchPolicy == LazyTextFieldSwitchPolicy.commit &&
-            handler != null &&
-            text != null) {
-          handler(text);
-        }
+        if (handler != null && text != null) handler(text);
       } finally {
         stopEditing(cellId);
       }
