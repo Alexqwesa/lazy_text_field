@@ -260,8 +260,10 @@ await editController.saveDrafts(
   keep `onCommit` text as `unsaved` drafts. Nothing is sent until
   `saveDrafts()`. `onSave` cells still save on submit and on switch.
 - `saveDrafts()` first commits open editors (`includeOpenEdits: false` to
-  skip them), then saves `unsaved` and `failed` drafts. It also waits for
-  saves that were already queued or running, including `onSave` submits.
+  skip them), then saves `unsaved` and `failed` drafts. With `batch`, the
+  text of open editors goes out in the batch too, not through each cell's
+  own save. It also waits for saves that were already queued or running,
+  including `onSave` submits.
 - The result counts what this call sent (`saved`, `failed`, `skipped`) and
   what is still not saved when it returns (`remaining`): failures, drafts
   without a saver, earlier saves that failed, and **text changed again while

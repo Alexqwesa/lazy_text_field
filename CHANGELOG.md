@@ -20,6 +20,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `LazyTextFieldAction` is `save` or `cancel`; keys are Flutter
   `ShortcutActivator`s. Leave a key out of the map to turn it off.
   `LazyTextFieldShortcuts.defaults` is the default set.
+- For custom cells on `LazyTextFieldEditController`:
+  - `beginEditRequest()` / `isLatestEditRequest()`: check after an
+    asynchronous wait that no other cell started editing meanwhile.
+  - `setKeepHandler()` / `removeKeepHandler()`: keep an open editor's text
+    as an unsaved draft, so `saveDrafts(batch: ...)` sends it in the batch.
+
+### Fixed
+
+- `ScopedLazyTextField`: a cell whose `onWillStartEditing` was still
+  running could open after the user had clicked another cell, and close
+  that cell. The cell clicked last now wins; a `startEditing` call from code
+  also wins over a pending permission.
+- `StatefulLazyTextField`: text typed while `onSave` ran was lost when the
+  save finished. The editor now stays open with the newer text, and a
+  submit made during the save is saved after it. A throw from `onSave` no
+  longer blocks every later save: it is reported to `FlutterError` and
+  treated as a rejection, as in `ScopedLazyTextField`.
+- `saveDrafts(batch: ...)` saved open editors through each cell's own
+  `onCommit` / `onSave`, in addition to the batch. Their text now goes out
+  in the batch.
 
 ### Changed
 

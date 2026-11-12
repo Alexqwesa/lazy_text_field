@@ -52,7 +52,12 @@ class StatefulLazyTextField extends StatefulWidget {
   final String text;
 
   /// Primary commit path: return true to accept and exit edit mode, or false
-  /// to keep editing (e.g. validation failed).
+  /// to keep editing (e.g. validation failed). A throw is reported to
+  /// [FlutterError] and treated as a rejection.
+  ///
+  /// The editor stays open while it runs. If the text changed meanwhile,
+  /// the editor stays open with the newer text; a submit made meanwhile is
+  /// saved after this one.
   final LazyTextFieldSave onSave;
 
   /// Whether the field should lay out and edit as one line.
@@ -148,6 +153,10 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
   FocusNode? _focusNode;
   int _editEpoch = 0;
   bool _saveInFlight = false;
+  // The value the running save sends, and newer text submitted while it
+  // runs, saved after it.
+  String? _savingValue;
+  String? _nextValue;
 
   bool get _isEditing => _controller != null && _focusNode != null;
 
@@ -270,15 +279,60 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
   }
 
   Future<void> _save(String value) async {
-    if (_saveInFlight || !_isEditing) return;
+    final editor = _controller;
+    if (editor == null || !_isEditing) return;
+    if (_saveInFlight) {
+      // Newer text saves after the running save; the same text is already
+      // being saved.
+      _nextValue = value == _savingValue ? null : value;
+      return;
+    }
     _saveInFlight = true;
     final epoch = _editEpoch;
-    final ok = await widget.onSave(value);
-    if (!mounted || epoch != _editEpoch) return;
-    _saveInFlight = false;
-    if (!ok) return;
-    _disposeEditState(update: true);
-    widget.onSaved?.call(value);
+    var current = value;
+    while (true) {
+      _savingValue = current;
+      final ok = await _runOnSave(current);
+      // Canceled, disposed, or recycled meanwhile: that reset the flags.
+      if (!mounted || epoch != _editEpoch) return;
+      final next = _nextValue;
+      _nextValue = null;
+      if (next != null && identical(_controller, editor)) {
+        if (ok) widget.onSaved?.call(current);
+        current = next;
+        continue;
+      }
+      _saveInFlight = false;
+      _savingValue = null;
+      if (!ok) return;
+      // Text typed while saving stays in the editor.
+      if (identical(_controller, editor) && editor.text == current) {
+        _disposeEditState(update: true);
+      }
+      widget.onSaved?.call(current);
+      return;
+    }
+  }
+
+  /// Runs [StatefulLazyTextField.onSave]; a throw is reported to
+  /// [FlutterError] and counts as a rejection, so the editor stays open.
+  Future<bool> _runOnSave(String value) async {
+    try {
+      return await widget.onSave(value);
+    } catch (error, stack) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'lazy_text_field',
+          context: ErrorDescription(
+            'while running StatefulLazyTextField.onSave for cell '
+            '"${widget.cellId}"',
+          ),
+        ),
+      );
+      return false;
+    }
   }
 
   void _cancel() {
@@ -290,6 +344,8 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
   void _invalidateEditSession() {
     _editEpoch++;
     _saveInFlight = false;
+    _savingValue = null;
+    _nextValue = null;
   }
 
   void _disposeEditState({bool update = false}) {

@@ -233,6 +233,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   TextEditingController? _inFlightEditor;
   Future<bool>? _inFlightSave;
   late final LazyTextFieldCommitHandler _commitHandler = _commitOnSwitch;
+  late final LazyTextFieldCommitHandler _keepHandler = _keepForBatch;
 
   @override
   void didUpdateWidget(covariant ScopedLazyTextField oldWidget) {
@@ -354,6 +355,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     if (_editController != editController) {
       _detachKeyboardHandler();
       _editController?.removeCommitHandler(widget.cellId, _commitHandler);
+      _editController?.removeKeepHandler(widget.cellId, _keepHandler);
       _editController = editController;
     }
 
@@ -362,7 +364,9 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     final isEditing = controller != null && focusNode != null;
     if (isEditing) {
       _attachKeyboardHandler(focusNode);
-      editController.setCommitHandler(widget.cellId, _commitHandler);
+      editController
+        ..setCommitHandler(widget.cellId, _commitHandler)
+        ..setKeepHandler(widget.cellId, _keepHandler);
     } else {
       _detachKeyboardHandler();
     }
@@ -448,6 +452,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   }) async {
     final epoch = _editEpoch;
     final cellId = widget.cellId;
+    // Another cell clicked while this one waits for onWillStartEditing wins.
+    final request = editController.beginEditRequest();
     final allowed = await Future<bool>.value(
       widget.onWillStartEditing?.call() ?? true,
     );
@@ -455,7 +461,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
         !mounted ||
         epoch != _editEpoch ||
         widget.cellId != cellId ||
-        !identical(_editController, editController)) {
+        !identical(_editController, editController) ||
+        !editController.isLatestEditRequest(request)) {
       return;
     }
     final initialValue = _displayText();
@@ -469,7 +476,9 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       draftKey: _draftKey,
     );
     // Register now: a switch can arrive before the rebuild that would do it.
-    editController.setCommitHandler(widget.cellId, _commitHandler);
+    editController
+      ..setCommitHandler(widget.cellId, _commitHandler)
+      ..setKeepHandler(widget.cellId, _keepHandler);
   }
 
   void _attachKeyboardHandler(FocusNode focusNode) {
@@ -571,6 +580,24 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     final editor = editController?.controllerFor(widget.cellId);
     if (editController == null || editor == null) return;
     _commitClosed(editController, widget, editor, value, notify: true);
+  }
+
+  /// Called by the controller for `saveDrafts(batch: ...)`: keeps this
+  /// editor's text as an unsaved draft, so it goes out in the batch instead
+  /// of through this cell's own save.
+  void _keepForBatch(String value) {
+    final editController = _editController;
+    final editor = editController?.controllerFor(widget.cellId);
+    if (editController == null || editor == null) return;
+    // A submit of this text from this editor is already saving it.
+    if (_saveInFlight &&
+        identical(_inFlightEditor, editor) &&
+        _inFlightValue == value) {
+      return;
+    }
+    if (_needsSave(editController, widget, value)) {
+      _hold(editController, widget, value, notify: true);
+    }
   }
 
   /// Saves [value] from [editor], which is closing because another cell

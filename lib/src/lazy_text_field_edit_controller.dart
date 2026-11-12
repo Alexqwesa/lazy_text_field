@@ -63,6 +63,9 @@ class LazyTextFieldEditController extends ChangeNotifier {
   final Map<String, FocusNode> _focusNodes = <String, FocusNode>{};
   final Map<String, LazyTextFieldCommitHandler> _commitHandlers =
       <String, LazyTextFieldCommitHandler>{};
+  final Map<String, LazyTextFieldCommitHandler> _keepHandlers =
+      <String, LazyTextFieldCommitHandler>{};
+  int _editRequest = 0;
   Completer<void>? _editingDone;
   bool _switching = false;
   bool _disposed = false;
@@ -117,6 +120,41 @@ class LazyTextFieldEditController extends ChangeNotifier {
     }
   }
 
+  /// Registers [handler] to keep [cellId]'s text as an
+  /// [LazyTextFieldDraftStatus.unsaved] draft without saving it (for
+  /// example with [holdDraft]).
+  ///
+  /// `saveDrafts(batch: ...)` calls it for open editors, so their text goes
+  /// out in the batch. An open editor without one is committed with its
+  /// commit handler instead, which saves it on its own.
+  ///
+  /// Only active cells can register. The handler is removed when the cell
+  /// stops editing.
+  void setKeepHandler(String cellId, LazyTextFieldCommitHandler handler) {
+    if (!_controllers.containsKey(cellId)) return;
+    _keepHandlers[cellId] = handler;
+  }
+
+  /// Removes [cellId]'s keep handler if it is still [handler].
+  void removeKeepHandler(String cellId, LazyTextFieldCommitHandler handler) {
+    if (identical(_keepHandlers[cellId], handler)) {
+      _keepHandlers.remove(cellId);
+    }
+  }
+
+  /// Starts a request to edit a cell, for a cell that waits for something
+  /// (such as an asynchronous permission check) before it calls
+  /// [startEditing]. Pass the result to [isLatestEditRequest] after the wait.
+  ///
+  /// A later request, or a [startEditing] call, from any cell of this
+  /// controller supersedes it: the user's last click wins.
+  int beginEditRequest() => ++_editRequest;
+
+  /// Whether no cell requested or started editing since [request] (from
+  /// [beginEditRequest]). If one did, do not start editing: the user has
+  /// moved on.
+  bool isLatestEditRequest(int request) => request == _editRequest;
+
   /// Starts editing [cellId] and returns its active controller.
   ///
   /// Unless [allowMultipleActiveEdits] is true, other active cells are stopped
@@ -133,6 +171,8 @@ class LazyTextFieldEditController extends ChangeNotifier {
     int? textOffset,
     Object? draftKey,
   }) {
+    // Supersedes edit requests still waiting (see beginEditRequest).
+    _editRequest++;
     if (!allowMultipleActiveEdits) {
       _switching = true;
       try {
@@ -232,8 +272,10 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// from [draftStore] and not shown since) are skipped. With [batch], all of
   /// them are sent in one call; see [LazyTextFieldBatchCommit].
   ///
-  /// With [includeOpenEdits] (default), open editors are committed first
-  /// ([commitAll]) and close. The returned future also waits for saves that
+  /// With [includeOpenEdits] (default), open editors are included and close.
+  /// Without [batch] they are committed first ([commitAll]). With [batch]
+  /// their text is kept as unsaved drafts (see [setKeepHandler]) and goes
+  /// out in the batch, not through each cell's own save. The returned future also waits for saves that
   /// were queued before the call, so
   /// [LazyTextFieldSaveDraftsResult.allSaved] is true only when nothing is
   /// left to save, including text changed again while saving
@@ -243,7 +285,13 @@ class LazyTextFieldEditController extends ChangeNotifier {
     LazyTextFieldBatchCommit? batch,
     bool includeOpenEdits = true,
   }) {
-    if (includeOpenEdits) commitAll();
+    if (includeOpenEdits) {
+      if (batch == null) {
+        commitAll();
+      } else {
+        _keepAll();
+      }
+    }
     return _drafts.saveDrafts(batch: batch);
   }
 
@@ -378,6 +426,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// when quickly switching cells.
   void stopEditing(String cellId, {bool notify = true}) {
     _commitHandlers.remove(cellId);
+    _keepHandlers.remove(cellId);
     final controller = _controllers.remove(cellId);
     final focusNode = _focusNodes.remove(cellId);
     if (controller == null && focusNode == null) return;
@@ -421,6 +470,20 @@ class LazyTextFieldEditController extends ChangeNotifier {
   void commitAll() {
     for (final cellId in _controllers.keys.toList(growable: false)) {
       final handler = _commitHandlers[cellId];
+      final text = _controllers[cellId]?.text;
+      try {
+        if (handler != null && text != null) handler(text);
+      } finally {
+        stopEditing(cellId);
+      }
+    }
+  }
+
+  /// Closes every open editor and keeps its changed text as an unsaved
+  /// draft, for a batch. Editors without a keep handler are committed.
+  void _keepAll() {
+    for (final cellId in _controllers.keys.toList(growable: false)) {
+      final handler = _keepHandlers[cellId] ?? _commitHandlers[cellId];
       final text = _controllers[cellId]?.text;
       try {
         if (handler != null && text != null) handler(text);
@@ -505,6 +568,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     _controllers.clear();
     _focusNodes.clear();
     _commitHandlers.clear();
+    _keepHandlers.clear();
     _completeEditingDone();
     super.dispose();
   }

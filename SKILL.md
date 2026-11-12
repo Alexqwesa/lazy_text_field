@@ -42,8 +42,8 @@ not with Flutter's `Shortcuts` widget, which the field's focus node bypasses.
 `editController.saveDrafts()` before leaving a screen, or check
 `editController.drafts` for unsaved entries. For "Save all" screens use
 `saveMode: LazyTextFieldSaveMode.deferred` with `saveDrafts()` or
-`saveDrafts(batch: ...)`. `saveDrafts()` commits open editors and waits for
-running saves; trust only `result.allSaved` (false while anything is
+`saveDrafts(batch: ...)`. `saveDrafts()` commits open editors (with `batch`,
+their text goes into the batch) and waits for running saves; trust only `result.allSaved` (false while anything is
 `remaining`, including text changed during the save). `onSaved` fires for
 every successful cell save, even after the cell left the tree, so do not use
 the cell's context in it. To survive restarts, pass a
