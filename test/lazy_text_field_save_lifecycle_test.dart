@@ -458,6 +458,23 @@ void main() {
       expect(_shown(tester, 'row-0'), 'typed');
     });
 
+    testWidgets('listeners hear about an editor scrolled away', (tester) async {
+      final controller = await pumpList(tester);
+      await _open(tester, 'row-0');
+      await _type(tester, 'typed');
+      final seen = <(int, int)>[];
+      controller.addListener(
+        () => seen.add((controller.activeIds.length, controller.drafts.length)),
+      );
+
+      // The cell is disposed during the frame, where it cannot notify.
+      scroll.jumpTo(2000);
+      await tester.pump();
+
+      expect(seen, isNotEmpty);
+      expect(seen.last, (0, 1));
+    });
+
     testWidgets('reopening a kept cell restores the text; Escape discards it', (
       tester,
     ) async {

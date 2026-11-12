@@ -57,6 +57,9 @@ fixes from 2.0.3. The changes to `ScopedLazyTextField` and
 - **Behavior change:** `onSaved` is called after every successful save of
   the cell: on submit, on switch, from `saveDrafts()`, and after the cell
   left the tree. Batches do not call it.
+- `stopEditing(notify: false)` now notifies listeners after the frame, so
+  listeners also see editors closed by cells that left the tree. The new
+  `holdDraft`, `enqueue`, and `trackDraft` do the same with `notify: false`.
 
 #### Added
 
@@ -96,6 +99,8 @@ fixes from 2.0.3. The changes to `ScopedLazyTextField` and
   - Store calls run one at a time, in order.
   - `whenDraftsStored()` retries failed writes and reports whether every
     draft is stored. `draftStoreErrors` lists the failed writes.
+- Example `example/lib/main_saving_demo.dart`: a mock API that can be slow
+  or fail, a list that unmounts cells, and switches for the save options.
 
 ## [2.0.3] - 2026-11-12
 

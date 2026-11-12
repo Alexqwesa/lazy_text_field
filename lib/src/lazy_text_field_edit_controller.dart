@@ -84,6 +84,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
   Completer<void>? _editingDone;
   bool _switching = false;
   bool _disposed = false;
+  bool _notifyScheduled = false;
 
   /// Active text controllers keyed by cell id.
   Map<String, TextEditingController> get controllers =>
@@ -217,20 +218,24 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// another cell starts editing. **Until then it exists only in memory** (and
   /// in [draftStore], if set): if neither happens, it is never saved.
   ///
-  /// Set [notify] to false when calling from [State.dispose].
+  /// Set [notify] to false when calling from [State.dispose]; listeners are
+  /// then notified after the frame.
   void holdDraft({
     required Object key,
     required String source,
     required String value,
     required LazyTextFieldDraftSaver saver,
     bool notify = true,
-  }) => _drafts.hold(
-    key: key,
-    source: source,
-    value: value,
-    saver: saver,
-    notify: notify,
-  );
+  }) {
+    _drafts.hold(
+      key: key,
+      source: source,
+      value: value,
+      saver: saver,
+      notify: notify,
+    );
+    if (!notify) _notifyAfterFrame();
+  }
 
   /// Registers how to save the draft for [key] later, for example for a
   /// draft restored by [loadDrafts] once its cell is built again.
@@ -295,8 +300,8 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// succeeded. Committing the value that is already pending for [key]
   /// returns the running save instead of queuing another.
   ///
-  /// Set [notify] to false when calling from [State.dispose]; [commit] always
-  /// runs asynchronously.
+  /// Set [notify] to false when calling from [State.dispose] (listeners are
+  /// then notified after the frame); [commit] always runs asynchronously.
   Future<bool> enqueue({
     required Object key,
     required String source,
@@ -304,14 +309,18 @@ class LazyTextFieldEditController extends ChangeNotifier {
     required LazyTextFieldCommit commit,
     Object? rowKey,
     bool notify = true,
-  }) => _drafts.enqueue(
-    key: key,
-    source: source,
-    value: value,
-    commit: commit,
-    rowKey: rowKey,
-    notify: notify,
-  );
+  }) {
+    final result = _drafts.enqueue(
+      key: key,
+      source: source,
+      value: value,
+      commit: commit,
+      rowKey: rowKey,
+      notify: notify,
+    );
+    if (!notify) _notifyAfterFrame();
+    return result;
+  }
 
   /// Shows [value] as the draft for [key] while [save] runs in the save
   /// queue, and keeps it if the save fails.
@@ -320,7 +329,8 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// saved; false or a throw marks it failed (with the thrown error, if any).
   /// [ScopedLazyTextField] uses this for `onSave` when an editor closes
   /// without a submit. Set [notify] to false when calling from
-  /// [State.dispose]; [save] always runs asynchronously.
+  /// [State.dispose] (listeners are then notified after the frame); [save]
+  /// always runs asynchronously.
   Future<bool> trackDraft({
     required Object key,
     required String source,
@@ -328,14 +338,18 @@ class LazyTextFieldEditController extends ChangeNotifier {
     required Future<bool> Function() save,
     Object? rowKey,
     bool notify = true,
-  }) => _drafts.track(
-    key: key,
-    source: source,
-    value: value,
-    save: save,
-    rowKey: rowKey,
-    notify: notify,
-  );
+  }) {
+    final result = _drafts.track(
+      key: key,
+      source: source,
+      value: value,
+      save: save,
+      rowKey: rowKey,
+      notify: notify,
+    );
+    if (!notify) _notifyAfterFrame();
+    return result;
+  }
 
   /// Runs [save] in the save queue without keeping a draft, for a save whose
   /// editor stays open until it finishes (as `onSave` on submit does).
@@ -374,8 +388,9 @@ class LazyTextFieldEditController extends ChangeNotifier {
 
   /// Stops editing [cellId] and disposes its edit resources.
   ///
-  /// Set [notify] to false when releasing resources during [State.dispose],
-  /// where notifying an [InheritedNotifier] would lock the widget tree.
+  /// Set [notify] to false when releasing resources during [State.dispose]
+  /// or a build, where notifying an [InheritedNotifier] would fail; listeners
+  /// are then notified after the frame.
   ///
   /// Controllers are disposed on the next frame after listeners rebuild so a
   /// still-connected IME cannot write into a disposed [TextEditingController]
@@ -392,6 +407,8 @@ class LazyTextFieldEditController extends ChangeNotifier {
     }
     if (notify) {
       notifyListeners();
+    } else {
+      _notifyAfterFrame();
     }
     if (_controllers.isEmpty && !_switching) _completeEditingDone();
     SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -454,6 +471,20 @@ class LazyTextFieldEditController extends ChangeNotifier {
   void notifyListeners() {
     if (_disposed) return;
     super.notifyListeners();
+  }
+
+  /// Notifies once after the current frame, for changes made where
+  /// notifying is not allowed (State.dispose, build), so listeners such as
+  /// draft counters still see them.
+  void _notifyAfterFrame() {
+    if (_notifyScheduled || _disposed) return;
+    _notifyScheduled = true;
+    SchedulerBinding.instance
+      ..addPostFrameCallback((_) {
+        _notifyScheduled = false;
+        notifyListeners();
+      })
+      ..ensureVisualUpdate();
   }
 
   void _completeEditingDone() {
