@@ -245,9 +245,21 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// (through the save queue) or `onSave`. Drafts without a known saver (loaded
   /// from [draftStore] and not shown since) are skipped. With [batch], all of
   /// them are sent in one call; see [LazyTextFieldBatchCommit].
+  ///
+  /// With [includeOpenEdits] (default), open editors are committed first
+  /// ([commitAll]) and close. The returned future also waits for saves that
+  /// were queued before the call, so
+  /// [LazyTextFieldSaveDraftsResult.allSaved] is true only when nothing is
+  /// left to save, including text changed again while saving
+  /// ([LazyTextFieldSaveDraftsResult.remaining]). Cells' `onSaved` run for
+  /// the drafts saved through them; a [batch] does not call them.
   Future<LazyTextFieldSaveDraftsResult> saveDrafts({
     LazyTextFieldBatchCommit? batch,
-  }) => _drafts.saveDrafts(batch: batch);
+    bool includeOpenEdits = true,
+  }) {
+    if (includeOpenEdits) commitAll();
+    return _drafts.saveDrafts(batch: batch);
+  }
 
   /// Restores the drafts in [draftStore] as unsaved drafts; returns how many
   /// were restored. Drafts already in memory win.
@@ -337,11 +349,19 @@ class LazyTextFieldEditController extends ChangeNotifier {
     Object? rowKey,
   }) => _drafts.queue(key: key, value: value, save: save, rowKey: rowKey);
 
-  /// Completes when every [draftStore] write requested so far has finished.
+  /// Waits until every [draftStore] write requested so far has finished,
+  /// retries failed writes once, and returns whether the store now holds
+  /// every unsaved draft (true when there is no store).
   ///
-  /// Writes run one at a time, in the order the drafts changed. Await this
-  /// before the app closes if the store is slow.
-  Future<void> whenDraftsStored() => _drafts.whenStored();
+  /// Writes run one at a time, in the order the drafts changed, but they are
+  /// asynchronous: the app can stop before they land. Await this before
+  /// telling the user their changes are kept, or before leaving a screen.
+  Future<bool> whenDraftsStored() => _drafts.whenStored();
+
+  /// Draft keys whose last [draftStore] write failed, with the error. Each
+  /// failure is also reported to [FlutterError]; a later successful write
+  /// of the key clears it.
+  Map<String, Object> get draftStoreErrors => _drafts.storeErrors;
 
   /// Updates the active controller text for [cellId] without starting editing.
   void updateText(String cellId, String value) {
@@ -392,6 +412,25 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// Stops all active edits.
   void stopAll() {
     stopWhere((_) => true);
+  }
+
+  /// Closes every open editor and commits its changed text, as switching to
+  /// another cell does under [LazyTextFieldSwitchPolicy.commit] (whatever
+  /// [switchPolicy] is): `onCommit` cells queue a save (or keep an unsaved
+  /// draft in [LazyTextFieldSaveMode.deferred]); `onSave` cells call it.
+  ///
+  /// Editors without a commit handler (custom cells that never called
+  /// [setCommitHandler]) are only closed.
+  void commitAll() {
+    for (final cellId in _controllers.keys.toList(growable: false)) {
+      final handler = _commitHandlers[cellId];
+      final text = _controllers[cellId]?.text;
+      try {
+        if (handler != null && text != null) handler(text);
+      } finally {
+        stopEditing(cellId);
+      }
+    }
   }
 
   void _switchFrom(String nextCellId) {

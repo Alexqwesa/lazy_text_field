@@ -40,10 +40,18 @@ in `onWillStartEditing`.
 `editController.saveDrafts()` before leaving a screen, or check
 `editController.drafts` for unsaved entries. For "Save all" screens use
 `saveMode: LazyTextFieldSaveMode.deferred` with `saveDrafts()` or
-`saveDrafts(batch: ...)`. To survive restarts, pass a
+`saveDrafts(batch: ...)`. `saveDrafts()` commits open editors and waits for
+running saves; trust only `result.allSaved` (false while anything is
+`remaining`, including text changed during the save). `onSaved` fires for
+every successful cell save, even after the cell left the tree, so do not use
+the cell's context in it. To survive restarts, pass a
 `LazyTextFieldDraftStore` (for example a Hive box) as `draftStore`, use
-String draft keys that are unique and stable, and call `loadDrafts()` at
-startup.
+String draft keys that are unique and stable, call `loadDrafts()` at
+startup, and await `whenDraftsStored()` (false if writes keep failing) before
+telling the user their changes are kept.
+
+In `onEditingExtraHeightChanged`, check `mounted` before `setState`: the final
+0 can arrive after the consumer was disposed.
 
 For server-backed grids, give cells `onCommit` (throw to fail) instead of
 `onSave`; any `LazyTextFieldEditController` (including the one a scope creates

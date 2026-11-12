@@ -17,12 +17,14 @@ void main() {
   late Set<String> failing;
   late List<String> saved;
   late List<(int, int)> settled;
+  Completer<void>? gate;
 
   setUp(() {
     commits = [];
     failing = {};
     saved = [];
     settled = [];
+    gate = null;
   });
 
   LazyTextFieldEditController newController({
@@ -71,6 +73,7 @@ void main() {
                             ? null
                             : (value) async {
                                 commits.add((id, value));
+                                await gate?.future;
                                 if (failing.contains(id)) throw 'rejected $id';
                               },
                         onSaved: saved.add,
@@ -149,6 +152,7 @@ void main() {
       expect(result.saved, 2);
       expect(result.allSaved, isTrue);
       expect(commits, [('a', 'new-a'), ('b', 'new-b')]);
+      expect(saved, ['new-a', 'new-b']);
       expect(status(controller, 'a'), LazyTextFieldDraftStatus.saved);
       expect(status(controller, 'b'), LazyTextFieldDraftStatus.saved);
       expect(settled, [(2, 0)]);
@@ -255,6 +259,81 @@ void main() {
       expect(saved, ['new-a']);
     });
 
+    testWidgets('saveDrafts commits open editors first', (tester) async {
+      final controller = newController();
+      await pumpCells(tester, controller);
+      await edit(tester, 'a', 'new-a');
+      expect(controller.isEditing('a'), isTrue);
+
+      final result = await controller.saveDrafts();
+      await tester.pump();
+      expect(result.saved, 1);
+      expect(result.allSaved, isTrue);
+      expect(commits, [('a', 'new-a')]);
+      expect(controller.isEditing('a'), isFalse);
+      expect(shown(tester, 'a'), 'new-a');
+    });
+
+    testWidgets('includeOpenEdits: false leaves open editors alone', (
+      tester,
+    ) async {
+      final controller = newController();
+      await pumpCells(tester, controller);
+      await edit(tester, 'a', 'new-a');
+      final result = await controller.saveDrafts(includeOpenEdits: false);
+      expect(result.saved, 0);
+      expect(commits, isEmpty);
+      expect(controller.isEditing('a'), isTrue);
+    });
+
+    testWidgets('onSaved runs for a draft whose cell left the tree', (
+      tester,
+    ) async {
+      final controller = newController();
+      await pumpCells(tester, controller);
+      await edit(tester, 'a', 'new-a');
+      await submit(tester);
+      await pumpCells(tester, controller, ids: ['b', 'c']);
+
+      final result = await controller.saveDrafts();
+      expect(result.saved, 1);
+      expect(commits, [('a', 'new-a')]);
+      expect(saved, ['new-a']);
+    });
+
+    testWidgets('a batch does not call onSaved', (tester) async {
+      final controller = newController();
+      await pumpCells(tester, controller);
+      await edit(tester, 'a', 'new-a');
+      await submit(tester);
+      final result = await controller.saveDrafts(batch: (_) async => {});
+      expect(result.saved, 1);
+      expect(saved, isEmpty);
+    });
+
+    testWidgets('a change during a batch is reported as remaining', (
+      tester,
+    ) async {
+      final controller = newController();
+      await pumpCells(tester, controller);
+      await edit(tester, 'a', 'new-a');
+      await submit(tester);
+
+      final request = Completer<Map<Object, Object?>>();
+      final result = controller.saveDrafts(batch: (_) => request.future);
+      await tester.pump();
+      await edit(tester, 'a', 'newer-a');
+      await submit(tester);
+      request.complete({});
+
+      final outcome = await result;
+      expect(outcome.saved, 1);
+      expect(outcome.remaining, 1);
+      expect(outcome.allSaved, isFalse);
+      expect(status(controller, 'a'), LazyTextFieldDraftStatus.unsaved);
+      expect(controller.draftFor('a')!.value, 'newer-a');
+    });
+
     testWidgets('saveDrafts with nothing to save returns at once', (
       tester,
     ) async {
@@ -262,6 +341,76 @@ void main() {
       final result = await controller.saveDrafts();
       expect(result.saved + result.failed + result.skipped, 0);
       expect(result.allSaved, isTrue);
+    });
+  });
+
+  group('saveDrafts and saves already running', () {
+    testWidgets('waits for them and reports a failure as remaining', (
+      tester,
+    ) async {
+      final controller = newController(
+        saveMode: LazyTextFieldSaveMode.immediate,
+      );
+      await pumpCells(tester, controller);
+      gate = Completer<void>();
+      failing.add('a');
+      await edit(tester, 'a', 'new-a');
+      await open(tester, 'b');
+      expect(status(controller, 'a'), LazyTextFieldDraftStatus.pending);
+
+      var done = false;
+      final result = controller.saveDrafts().then((r) {
+        done = true;
+        return r;
+      });
+      await tester.pump();
+      expect(done, isFalse);
+
+      gate!.complete();
+      final outcome = await result;
+      expect(outcome.saved + outcome.failed, 0);
+      expect(outcome.remaining, 1);
+      expect(outcome.allSaved, isFalse);
+      expect(status(controller, 'a'), LazyTextFieldDraftStatus.failed);
+    });
+
+    testWidgets('is all saved once they succeed', (tester) async {
+      final controller = newController(
+        saveMode: LazyTextFieldSaveMode.immediate,
+      );
+      await pumpCells(tester, controller);
+      gate = Completer<void>();
+      await edit(tester, 'a', 'new-a');
+      await open(tester, 'b');
+
+      final result = controller.saveDrafts(includeOpenEdits: false);
+      await tester.pump();
+      gate!.complete();
+      final outcome = await result;
+      expect(outcome.allSaved, isTrue);
+      expect(controller.pendingSaves, 0);
+      expect(saved, ['new-a']);
+    });
+
+    testWidgets('waits for onSave submits too', (tester) async {
+      final controller = newController(
+        saveMode: LazyTextFieldSaveMode.immediate,
+      );
+      final slow = Completer<bool>();
+      await pumpCells(tester, controller, onSave: (_) => slow.future);
+      await edit(tester, 'a', 'new-a');
+      await submit(tester);
+
+      var done = false;
+      unawaited(
+        controller.saveDrafts(includeOpenEdits: false).then((_) => done = true),
+      );
+      await tester.pump();
+      expect(done, isFalse);
+      slow.complete(true);
+      await tester.pump();
+      await tester.pump();
+      expect(done, isTrue);
     });
   });
 
@@ -399,6 +548,76 @@ void main() {
       );
     });
 
+    testWidgets('failed writes are tracked and retried by whenDraftsStored', (
+      tester,
+    ) async {
+      final store = _FlakyStore()..failures = 1;
+      final controller = newController(store: store);
+      final errors = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = previous);
+
+      controller.holdDraft(
+        key: 'a',
+        source: 'old',
+        value: 'new',
+        saver: (_) async => true,
+      );
+      await tester.pump();
+      expect(controller.draftStoreErrors.keys, ['a']);
+      expect(errors, hasLength(1));
+      expect(store.drafts, isEmpty);
+
+      expect(await controller.whenDraftsStored(), isTrue);
+      expect(controller.draftStoreErrors, isEmpty);
+      expect(store.drafts.keys, ['a']);
+    });
+
+    testWidgets('whenDraftsStored reports a store that keeps failing', (
+      tester,
+    ) async {
+      final store = _FlakyStore()..failures = 100;
+      final controller = newController(store: store);
+      final previous = FlutterError.onError;
+      FlutterError.onError = (_) {};
+      addTearDown(() => FlutterError.onError = previous);
+
+      controller.holdDraft(
+        key: 'a',
+        source: 'old',
+        value: 'new',
+        saver: (_) async => true,
+      );
+      expect(await controller.whenDraftsStored(), isFalse);
+      expect(controller.draftStoreErrors.keys, ['a']);
+    });
+
+    testWidgets('a delete after a failed put is still sent', (tester) async {
+      final store = _FlakyStore()
+        ..drafts['a'] = const LazyTextFieldStoredDraft(
+          key: 'a',
+          value: 'older',
+          baseText: 'old',
+        )
+        ..failures = 1;
+      final controller = newController(store: store);
+      final previous = FlutterError.onError;
+      FlutterError.onError = (_) {};
+      addTearDown(() => FlutterError.onError = previous);
+
+      controller.holdDraft(
+        key: 'a',
+        source: 'old',
+        value: 'new',
+        saver: (_) async => true,
+      );
+      await tester.pump();
+      controller.clearDraft('a');
+      expect(await controller.whenDraftsStored(), isTrue);
+      expect(store.drafts, isEmpty);
+    });
+
     test('stored drafts round-trip through JSON', () {
       const draft = LazyTextFieldStoredDraft(
         key: 'row-1/name',
@@ -408,4 +627,27 @@ void main() {
       expect(LazyTextFieldStoredDraft.fromJson(draft.toJson()), draft);
     });
   });
+}
+
+/// A memory store whose next [failures] writes throw.
+class _FlakyStore extends LazyTextFieldMemoryDraftStore {
+  int failures = 0;
+
+  @override
+  void put(LazyTextFieldStoredDraft draft) {
+    if (failures > 0) {
+      failures--;
+      throw StateError('disk full');
+    }
+    super.put(draft);
+  }
+
+  @override
+  void delete(String key) {
+    if (failures > 0) {
+      failures--;
+      throw StateError('disk full');
+    }
+    super.delete(key);
+  }
 }

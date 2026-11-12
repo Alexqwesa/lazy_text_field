@@ -160,6 +160,75 @@ void main() {
     expect(reports, [20, 0]);
   });
 
+  testWidgets('a replaced callback keeps the consumer: the new one gets the '
+      'next change, and nothing is re-sent', (tester) async {
+    await pumpField(tester);
+    await startEditing(tester);
+    await type(tester, '1\n2\n3\n4');
+    expect(reports, [20]);
+
+    final replacement = <double>[];
+    await pumpField(tester, onExtra: replacement.add);
+    await tester.pump();
+    expect(replacement, isEmpty);
+    expect(reports, [20]);
+
+    await type(tester, '1\n2\n3\n4\n5');
+    expect(replacement, [30]);
+    expect(reports, [20]);
+  });
+
+  testWidgets('an inline callback that rebuilds its parent does not loop', (
+    tester,
+  ) async {
+    var extra = 0.0;
+    var builds = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                builds++;
+                return SizedBox(
+                  width: 200,
+                  height: _twoLines + extra,
+                  child: StatefulLazyTextField(
+                    cellId: 'c',
+                    text: 'one',
+                    style: _style,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isCollapsed: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    minHeight: _twoLines,
+                    maxHeight: _twoLines,
+                    editingMaxHeight: _editingMax,
+                    // A new closure every build. The last report (0) can
+                    // arrive after this parent was disposed too.
+                    onEditingExtraHeightChanged: (value) {
+                      if (context.mounted) setState(() => extra = value);
+                    },
+                    onSave: (_) => true,
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await startEditing(tester);
+    await type(tester, '1\n2\n3\n4');
+    expect(extra, 20);
+    final settledBuilds = builds;
+    await tester.pump();
+    await tester.pump();
+    expect(builds, settledBuilds);
+  });
+
   testWidgets('growing and disposing in one frame reports 0 exactly once', (
     tester,
   ) async {

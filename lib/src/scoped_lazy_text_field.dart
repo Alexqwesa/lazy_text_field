@@ -194,7 +194,15 @@ class ScopedLazyTextField extends StatefulWidget {
   /// Called when editing is canceled with Escape.
   final VoidCallback? onCancel;
 
-  /// Called after [onSave] accepts a value.
+  /// Called with the value after every successful save of this cell:
+  /// [onSave] returned true or [onCommit] completed, whether it ran on
+  /// submit, on switch, or later from
+  /// [LazyTextFieldEditController.saveDrafts] or a flush.
+  ///
+  /// It may run after the cell left the tree (scrolled away, recycled), so
+  /// do not use this cell's `BuildContext` in it; update your model instead.
+  /// Saves through `saveDrafts(batch: ...)` do not call it; read the batch
+  /// result or use [LazyTextFieldEditController.onSavesSettled].
   final ValueChanged<String>? onSaved;
 
   @override
@@ -297,25 +305,39 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     final key = config.draftKey ?? config.cellId;
     if (config.onCommit case final commit?) {
       final rowKey = config.rowKey;
-      return (draft) => editController.enqueue(
-        key: key,
-        source: draft.baseText,
-        value: draft.value,
-        commit: commit,
-        rowKey: rowKey,
-      );
+      return (draft) => editController
+          .enqueue(
+            key: key,
+            source: draft.baseText,
+            value: draft.value,
+            commit: commit,
+            rowKey: rowKey,
+          )
+          .then(_afterSave(config.onSaved, draft.value));
     }
     final onSave = config.onSave!;
     final cellId = config.cellId;
     final rowKey = config.rowKey;
-    return (draft) => editController.trackDraft(
-      key: key,
-      source: draft.baseText,
-      value: draft.value,
-      save: () => _runOnSave(onSave, draft.value, cellId),
-      rowKey: rowKey,
-    );
+    return (draft) => editController
+        .trackDraft(
+          key: key,
+          source: draft.baseText,
+          value: draft.value,
+          save: () => _runOnSave(onSave, draft.value, cellId),
+          rowKey: rowKey,
+        )
+        .then(_afterSave(config.onSaved, draft.value));
   }
+
+  /// Calls [onSaved] with [value] after a successful save, even when the
+  /// cell has left the tree since.
+  static bool Function(bool saved) _afterSave(
+    ValueChanged<String>? onSaved,
+    String value,
+  ) => (saved) {
+    if (saved) onSaved?.call(value);
+    return saved;
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -486,12 +508,18 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     final editor = editController?.controllerFor(widget.cellId);
     if (editController == null || editor == null) return;
     if (widget.onCommit != null) return _commit(value);
-    // One running save per editor. A reopened editor may submit again.
-    if (_saveInFlight && identical(_inFlightEditor, editor)) return;
+    // Submitting the text that is already being saved does nothing. Newer
+    // text queues behind it.
+    if (_saveInFlight &&
+        identical(_inFlightEditor, editor) &&
+        _inFlightValue == value) {
+      return;
+    }
     final epoch = _editEpoch;
     final cellId = widget.cellId;
     final key = _draftKey;
     final onSave = widget.onSave!;
+    final onSaved = widget.onSaved;
     // Through the save queue: it starts after earlier saves of this cell, so
     // an older value cannot overwrite this one.
     final save = editController.queueSave(
@@ -506,20 +534,24 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     _inFlightSave = save;
     final ok = await save;
     if (identical(_inFlightSave, save)) _clearInFlight();
-    if (!ok || !mounted || epoch != _editEpoch || widget.cellId != cellId) {
-      return;
+    if (!ok) return;
+    if (mounted && epoch == _editEpoch && widget.cellId == cellId) {
+      // Forget a kept draft only if it holds this value; newer text stays.
+      final kept = editController.draftFor(key);
+      if ((kept?.status == LazyTextFieldDraftStatus.failed ||
+              kept?.status == LazyTextFieldDraftStatus.unsaved) &&
+          kept!.value == value) {
+        editController.clearDraft(key);
+      }
+      // Close only the editor that submitted (a switch may have closed it
+      // and the cell may be editing again), and only if nothing was typed
+      // since.
+      if (identical(editController.controllerFor(cellId), editor) &&
+          editor.text == value) {
+        editController.stopEditing(cellId);
+      }
     }
-    final kept = editController.draftFor(key)?.status;
-    if (kept == LazyTextFieldDraftStatus.failed ||
-        kept == LazyTextFieldDraftStatus.unsaved) {
-      editController.clearDraft(key);
-    }
-    // Close only the editor that submitted: a switch may have closed it and
-    // the cell may be editing again.
-    if (identical(editController.controllerFor(cellId), editor)) {
-      editController.stopEditing(cellId);
-    }
-    widget.onSaved?.call(value);
+    onSaved?.call(value);
   }
 
   /// Called by the controller while it closes this editor for another cell.
@@ -545,11 +577,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     final cellId = config.cellId;
     final key = config.draftKey ?? cellId;
 
-    void savedCallback(bool saved) {
-      if (saved && mounted && widget.cellId == cellId) {
-        widget.onSaved?.call(value);
-      }
-    }
+    final savedCallback = _afterSave(config.onSaved, value);
 
     if (config.onCommit case final commit?) {
       if (editController.saveMode == LazyTextFieldSaveMode.deferred) {
@@ -637,6 +665,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
 
     final editor = editController.controllerFor(cellId);
     final epoch = _editEpoch;
+    final onSaved = widget.onSaved;
     final saved = editController.enqueue(
       key: key,
       source: widget.text,
@@ -647,8 +676,11 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     final closeAfterSave =
         widget.closeOnSubmit == LazyTextFieldSubmitClose.afterSave;
     if (!closeAfterSave) editController.stopEditing(cellId);
-    if (!await saved || !mounted || widget.cellId != cellId) return;
-    if (closeAfterSave && epoch == _editEpoch) {
+    if (!await saved) return;
+    if (mounted &&
+        widget.cellId == cellId &&
+        closeAfterSave &&
+        epoch == _editEpoch) {
       // Close only the editor that submitted, and only if it was not edited
       // while saving.
       final current = editController.controllerFor(cellId);
@@ -656,7 +688,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
         if (current.text == value) editController.stopEditing(cellId);
       }
     }
-    widget.onSaved?.call(value);
+    onSaved?.call(value);
   }
 
   void _cancel() {

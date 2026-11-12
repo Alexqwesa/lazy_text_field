@@ -156,6 +156,54 @@ void main() {
       expect(controller.pendingSaves, 0);
     });
 
+    testWidgets('typing after a submit keeps the editor open with the newer '
+        'text', (tester) async {
+      final first = Completer<bool>();
+      onSaveA = (value) => value == 'first' ? first.future : true;
+      await pumpCells(tester);
+      await _open(tester, 'a');
+      await _type(tester, 'first');
+      await _submit(tester);
+      await _type(tester, 'second');
+
+      first.complete(true);
+      await tester.pump();
+      await tester.pump();
+      expect(saved, ['first']);
+      expect(controller.isEditing('a'), isTrue);
+      expect(_editorText(tester), 'second');
+
+      // The newer text can be submitted and closes the editor.
+      await _submit(tester);
+      await tester.pump();
+      expect(saves, ['first', 'second']);
+      expect(saved, ['first', 'second']);
+      expect(controller.isEditing('a'), isFalse);
+    });
+
+    testWidgets('a second submit while the first saves queues behind it', (
+      tester,
+    ) async {
+      final first = Completer<bool>();
+      onSaveA = (value) => value == 'first' ? first.future : true;
+      await pumpCells(tester);
+      await _open(tester, 'a');
+      await _type(tester, 'first');
+      await _submit(tester);
+      await _type(tester, 'second');
+      await _submit(tester);
+      await tester.pump();
+      expect(saves, ['first']);
+      expect(controller.pendingSaves, 2);
+
+      first.complete(true);
+      await tester.pump();
+      await tester.pump();
+      expect(saves, ['first', 'second']);
+      expect(saved, ['first', 'second']);
+      expect(controller.isEditing('a'), isFalse);
+    });
+
     testWidgets('an older save that fails does not block the newer one', (
       tester,
     ) async {

@@ -208,9 +208,10 @@ An `unsaved` draft is text that was kept but not saved:
 > check `drafts` for unsaved entries and ask the user.
 
 ```dart
-// Before leaving the screen:
+// Before leaving the screen: commits open editors, saves every unsaved and
+// failed draft, and waits for saves that were already running.
 final result = await editController.saveDrafts();
-if (!result.allSaved) showUnsavedChangesDialog();
+if (!result.allSaved) showUnsavedChangesDialog(result.remaining);
 
 // Or show how many changes are waiting:
 final waiting = editController.drafts.values.where(
@@ -240,8 +241,17 @@ await editController.saveDrafts(
 - In `deferred` mode, Enter, switching cells, and cells leaving the tree only
   keep `onCommit` text as `unsaved` drafts. Nothing is sent until
   `saveDrafts()`. `onSave` cells still save on submit and on switch.
-- `saveDrafts()` saves `unsaved` and `failed` drafts, returns
-  `saved` / `failed` / `skipped` counts, and fires `onSavesSettled` once.
+- `saveDrafts()` first commits open editors (`includeOpenEdits: false` to
+  skip them), then saves `unsaved` and `failed` drafts. It also waits for
+  saves that were already queued or running, including `onSave` submits.
+- The result counts what this call sent (`saved`, `failed`, `skipped`) and
+  what is still not saved when it returns (`remaining`): failures, drafts
+  without a saver, earlier saves that failed, and **text changed again while
+  saving**. `allSaved` is true only when `failed` and `remaining` are 0, so
+  it never claims success while a newer change is waiting.
+- Each saved draft calls its cell's `onSaved`, even if the cell left the
+  tree. A `batch` does not call `onSaved`; use its result or
+  `onSavesSettled`.
 - A batch gets `{draftKey: value}` and returns the errors of drafts that
   failed (missing or null means saved). If it throws, every draft fails with
   that error.
@@ -291,8 +301,18 @@ await editController.loadDrafts(); // at startup
 - Store calls run one at a time, in the order the drafts changed: a `delete`
   starts only after the earlier `put` finished, so a deleted draft cannot
   come back. A failed write is reported to `FlutterError` and the next one
-  still runs. `loadDrafts()` waits for queued writes;
-  `whenDraftsStored()` completes once every write so far has finished.
+  still runs; `draftStoreErrors` lists the keys whose last write failed.
+  `loadDrafts()` waits for queued writes.
+- **Writes are asynchronous: the app can stop before they land.** Before
+  telling the user their changes are kept, or before leaving the screen,
+  await `whenDraftsStored()`. It waits for queued writes, retries failed ones
+  once, and returns whether the store holds every unsaved draft.
+
+```dart
+if (!await editController.whenDraftsStored()) {
+  showError('Could not keep your unsaved changes on this device.');
+}
+```
 
 ### Refreshing data around edits
 
@@ -571,8 +591,9 @@ ScopedLazyTextField(
   minHeight: twoLines,
   maxHeight: twoLines,                       // read-only clip
   editingMaxHeight: screenHeight * 0.6,      // editor may grow up to this
-  onEditingExtraHeightChanged: (extra) =>    // editorHeight - maxHeight
-      grid.setExtraRowHeight(rowKey, cellId, extra),
+  onEditingExtraHeightChanged: (extra) {      // editorHeight - maxHeight
+    if (mounted) grid.setExtraRowHeight(rowKey, cellId, extra);
+  },
   onCommit: save,
 );
 ```
@@ -588,6 +609,13 @@ ScopedLazyTextField(
 - The scrollbar gutter stays reserved in both modes (also with
   `double.infinity`), so wrapping does not change when the editor grows.
 - If several cells in a row can edit, keep the largest `extra` per row.
+- The final 0 after a dispose arrives in the next frame, when your widget may
+  be disposed too (the screen was popped): check `mounted` before
+  `setState`.
+- A new callback instance (an inline closure rebuilt each frame) is treated
+  as the same consumer: it gets the next change, and the current value is not
+  re-sent, which would loop through `setState`. To hand the field to a
+  different consumer, pass null for one build or give the field a new key.
 
 ## Migrating from 1.x
 

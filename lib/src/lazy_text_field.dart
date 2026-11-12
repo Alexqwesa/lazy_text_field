@@ -287,6 +287,18 @@ class LazyTextField extends StatefulWidget {
   /// frame and only when the value changes; called with 0 when editing stops
   /// or the field is disposed. Always 0 without [editingMaxHeight] or with a
   /// null [maxHeight].
+  ///
+  /// The 0 after a dispose arrives in the next frame, when the consumer may
+  /// have been disposed as well (for example the whole screen was popped).
+  /// Check `mounted` before calling `setState` in this callback.
+  ///
+  /// Replacing the callback with another non-null one (for example an inline
+  /// closure rebuilt each frame) keeps the same consumer: the new callback
+  /// gets the next change, and the current value is not sent again (that
+  /// would rebuild the parent, create a new closure, and loop). To move the
+  /// field to a different consumer, pass null for one build (the old one
+  /// gets 0, the next one gets the current value) or give the field a new
+  /// key.
   /// {@endtemplate}
   final ValueChanged<double>? onEditingExtraHeightChanged;
 

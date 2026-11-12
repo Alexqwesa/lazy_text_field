@@ -31,9 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   earlier saves of other cells (its editor stays open until then); use
   `perRow` with `rowKey` to save rows in parallel. `pendingSaves` and
   `onSavesSettled` now count `onSave` calls too.
+- **Behavior change:** `ScopedLazyTextField.onSaved` is called after every
+  successful save of the cell, also from `saveDrafts()` and flushes, and also
+  after the cell left the tree. Batches do not call it.
 
 ### Fixed
 
+- An `onSave` submit followed by more typing no longer closes the editor
+  (and drops the newer text) when the first save finishes; a second submit
+  queues behind the first.
 - A save that finished after its cell had been closed and reopened could
   close the new editor.
 - Recycling an editing `ScopedLazyTextField` for a new `cellId` notified the
@@ -56,13 +62,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `perRow` (different `rowKey`s save in parallel).
 - `LazyTextFieldDraftStatus.unsaved` and `LazyTextFieldSaveMode`
   (`immediate`, `deferred`) for "Save all" screens.
-- `LazyTextFieldEditController.saveDrafts({batch})` (returns
-  `LazyTextFieldSaveDraftsResult`), `drafts`, `holdDraft`, `setDraftSaver`
+- `LazyTextFieldEditController.saveDrafts({batch, includeOpenEdits})`
+  (returns `LazyTextFieldSaveDraftsResult` with `remaining`; `allSaved` is
+  false while any change is left, including text changed during the save),
+  `commitAll()`, `drafts`, `holdDraft`, `setDraftSaver`
   (`LazyTextFieldDraftSaver`), and `LazyTextFieldBatchCommit`.
 - `LazyTextFieldDraftStore` (`draftStore`, `loadDrafts()`),
   `LazyTextFieldStoredDraft` (JSON), and `LazyTextFieldMemoryDraftStore`, to
   keep unsaved drafts across restarts (for example in Hive). Store calls run
-  one at a time, in order; `whenDraftsStored()` waits for them.
+  one at a time, in order. `whenDraftsStored()` waits for them, retries
+  failed writes, and reports whether every draft is stored;
+  `draftStoreErrors` lists failed writes.
 - `startEditing(draftKey:)` so the draft being continued is not saved.
 - `LazyTextFieldEditController.trackDraft`: shows a value as a draft while a
   save that reports success as a `bool` runs in the save queue, and keeps it

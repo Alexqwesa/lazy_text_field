@@ -159,12 +159,14 @@ class LazyTextFieldSaveDraftsResult {
     this.saved = 0,
     this.failed = 0,
     this.skipped = 0,
+    this.remaining = 0,
   });
 
-  /// Drafts that were saved.
+  /// Drafts this call sent and the server accepted: the values as they were
+  /// when the call started. A newer value typed meanwhile is in [remaining].
   final int saved;
 
-  /// Drafts whose save failed; they stay as failed drafts.
+  /// Drafts this call sent whose save failed; they stay as failed drafts.
   final int failed;
 
   /// Drafts left unsaved because no saver is known for them (a draft loaded
@@ -172,13 +174,22 @@ class LazyTextFieldSaveDraftsResult {
   /// Pass a `batch` to save those too.
   final int skipped;
 
-  /// Whether every draft was saved.
-  bool get allSaved => failed == 0 && skipped == 0;
+  /// Drafts not saved when the call finished, whatever the reason: failed,
+  /// skipped, changed again while saving, or kept by saves that were already
+  /// running when the call started and then failed.
+  ///
+  /// `LazyTextFieldEditController.saveDrafts` commits open editors first by
+  /// default; with `includeOpenEdits: false`, open editors are not drafts and
+  /// are not counted.
+  final int remaining;
+
+  /// Whether nothing is left to save: no failure and no [remaining] draft.
+  bool get allSaved => failed == 0 && remaining == 0;
 
   @override
   String toString() =>
       'LazyTextFieldSaveDraftsResult(saved: $saved, failed: $failed, '
-      'skipped: $skipped)';
+      'skipped: $skipped, remaining: $remaining)';
 }
 
 /// A draft as written to a [LazyTextFieldDraftStore].
@@ -305,6 +316,7 @@ class LazyTextFieldDraftQueue {
   final Map<Object, Future<void>> _tails = <Object, Future<void>>{};
   // Store writes run one at a time, in order.
   Future<void> _storeTail = Future<void>.value();
+  final Map<String, Object> _storeErrors = <String, Object>{};
   final List<Completer<void>> _settledWaiters = <Completer<void>>[];
   int _pendingSaves = 0;
   int _savedSinceSettle = 0;
@@ -394,31 +406,47 @@ class LazyTextFieldDraftQueue {
   Future<LazyTextFieldSaveDraftsResult> saveDrafts({
     LazyTextFieldBatchCommit? batch,
   }) async {
+    // Saves queued before this call (pending drafts, onSave submits) must
+    // finish before the result can say what is left.
+    final earlier = Set<Future<void>>.of(_tails.values);
     final targets = <Object, LazyTextFieldDraft>{
       for (final entry in _drafts.entries)
         if (entry.value.status == LazyTextFieldDraftStatus.unsaved ||
             entry.value.status == LazyTextFieldDraftStatus.failed)
           entry.key: entry.value,
     };
-    if (targets.isEmpty) return const LazyTextFieldSaveDraftsResult();
-    if (batch != null) return _saveBatch(targets, batch);
 
+    var saved = 0;
+    var failed = 0;
     var skipped = 0;
-    final saves = <Future<bool>>[];
-    for (final MapEntry(:key, value: draft) in targets.entries) {
-      final saver = _savers[key];
-      if (saver == null) {
-        skipped++;
-      } else {
-        saves.add(saver(draft).catchError((Object _) => false));
+    if (targets.isEmpty) {
+      // Nothing to send.
+    } else if (batch != null) {
+      final result = await _saveBatch(targets, batch);
+      saved = result.saved;
+      failed = result.failed;
+    } else {
+      final saves = <Future<bool>>[];
+      for (final MapEntry(:key, value: draft) in targets.entries) {
+        final saver = _savers[key];
+        if (saver == null) {
+          skipped++;
+        } else {
+          saves.add(saver(draft).catchError((Object _) => false));
+        }
       }
+      final results = await Future.wait(saves);
+      saved = results.where((ok) => ok).length;
+      failed = results.length - saved;
     }
-    final results = await Future.wait(saves);
-    final saved = results.where((ok) => ok).length;
+    await Future.wait(earlier);
     return LazyTextFieldSaveDraftsResult(
       saved: saved,
-      failed: results.length - saved,
+      failed: failed,
       skipped: skipped,
+      remaining: _drafts.values
+          .where((draft) => draft.status != LazyTextFieldDraftStatus.saved)
+          .length,
     );
   }
 
@@ -723,33 +751,54 @@ class LazyTextFieldDraftQueue {
     if (key is! String) return;
     final keep =
         draft != null && draft.status != LazyTextFieldDraftStatus.saved;
+    // After a failed write the stored state is unknown: always write again.
+    final unknown = _storeErrors.containsKey(key);
     if (keep) {
       final record = LazyTextFieldStoredDraft(
         key: key,
         value: draft.value,
         baseText: draft.baseText,
       );
-      if (_stored[key] == record) return;
+      if (_stored[key] == record && !unknown) return;
       _stored[key] = record;
-      _write(() => store.put(record));
-    } else if (_stored.remove(key) != null) {
-      _write(() => store.delete(key));
+      _write(key, () => store.put(record));
+    } else if (_stored.remove(key) != null || unknown) {
+      _write(key, () => store.delete(key));
     }
   }
 
-  // Chained, so a put and a later delete of the same key land in that order
-  // even when the store would complete them out of order.
-  void _write(FutureOr<void> Function() write) {
+  // One chain for all keys, so a put and a later delete of the same key land
+  // in that order even when the store would complete them out of order.
+  void _write(String key, FutureOr<void> Function() write) {
     _storeTail = _storeTail
         .then((_) => write())
-        .onError<Object>(
-          (error, stack) =>
-              _report(error, stack, 'while writing a LazyTextFieldDraftStore'),
+        .then<void>(
+          (_) => _storeErrors.remove(key),
+          onError: (Object error, StackTrace stack) {
+            _storeErrors[key] = error;
+            _report(error, stack, 'while writing a LazyTextFieldDraftStore');
+          },
         );
   }
 
-  /// Completes when every store write queued so far has finished.
-  Future<void> whenStored() => _storeTail;
+  /// Keys whose last store write failed, with the error.
+  Map<String, Object> get storeErrors => Map.unmodifiable(_storeErrors);
+
+  /// Waits for every store write queued so far, retries failed ones once,
+  /// and returns whether the store now matches the drafts in memory.
+  Future<bool> whenStored() async {
+    if (store == null) return true;
+    await _storeTail;
+    if (_storeErrors.isEmpty) return true;
+    if (!_disposed) {
+      // Rewrite each failed key from its current state.
+      for (final key in List.of(_storeErrors.keys)) {
+        _persist(key, _drafts[key]);
+      }
+      await _storeTail;
+    }
+    return _storeErrors.isEmpty;
+  }
 
   void _report(Object error, StackTrace stack, String context) {
     FlutterError.reportError(
@@ -788,7 +837,9 @@ class _QueuedSave {
   _QueuedSave(this.value);
 
   final String value;
-  final Completer<bool> done = Completer<bool>();
+  // Sync, so callers' `then` callbacks (onSaved) run before the lane moves
+  // on and before saveDrafts() returns.
+  final Completer<bool> done = Completer<bool>.sync();
   final List<void Function(bool saved, Object? error)> listeners =
       <void Function(bool saved, Object? error)>[];
 }

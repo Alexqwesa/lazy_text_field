@@ -211,6 +211,8 @@ void main() {
       expect(drafts.draftFor('b')!.status, LazyTextFieldDraftStatus.failed);
       expect(drafts.draftFor('c'), isNull);
       expect(drafts.pendingSaves, 0);
+      // Settles right after the callers' callbacks ran.
+      await pumpEventQueue();
       expect(settled, [(1, 2)]);
     });
 
@@ -278,6 +280,43 @@ void main() {
     });
   });
 
+  test('an older save succeeding after a newer one failed keeps the newer '
+      'failed draft', () async {
+    final drafts = queue();
+    // The newer save waits for the older one; its failure is what stays.
+    final older = enqueue(drafts, 'k', 'older');
+    final newer = drafts.track(
+      key: 'k',
+      source: 'old',
+      value: 'newer',
+      save: () async => false,
+    );
+    await pumpEventQueue();
+    pending.removeAt(0).complete();
+    expect(await older, isTrue);
+    expect(await newer, isFalse);
+    final draft = drafts.draftFor('k')!;
+    expect(draft.value, 'newer');
+    expect(draft.status, LazyTextFieldDraftStatus.failed);
+  });
+
+  test('saveDrafts counts saves queued before it and newer changes', () async {
+    final drafts = queue();
+    final running = enqueue(drafts, 'a', 'new-a');
+    var done = false;
+    final result = drafts.saveDrafts().then((r) {
+      done = true;
+      return r;
+    });
+    await pumpEventQueue();
+    expect(done, isFalse);
+    pending.removeAt(0).completeError('offline');
+    expect(await running, isFalse);
+    final outcome = await result;
+    expect(outcome.remaining, 1);
+    expect(outcome.allSaved, isFalse);
+  });
+
   group('store writes', () {
     test('run one at a time, in order', () async {
       final store = _SlowStore();
@@ -336,10 +375,19 @@ void main() {
       store.failNext('disk full');
       await pumpEventQueue();
       store.finishNext();
-      await drafts.whenStored();
-
+      await pumpEventQueue();
       expect(errors.single.exception, 'disk full');
       expect(store.drafts.keys, ['b']);
+      expect(drafts.storeErrors.keys, ['a']);
+
+      // whenStored retries the failed key once.
+      final stored = drafts.whenStored();
+      await pumpEventQueue();
+      expect(store.log, ['put a', 'put b', 'put a']);
+      store.finishNext();
+      expect(await stored, isTrue);
+      expect(drafts.storeErrors, isEmpty);
+      expect(store.drafts.keys, unorderedEquals(['a', 'b']));
     });
 
     test('load waits for queued writes', () async {
