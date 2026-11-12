@@ -98,7 +98,7 @@ When a `ScopedLazyTextField` starts editing, the shared
 `LazyTextFieldEditController` closes the other active cells. Its
 `switchPolicy` decides what happens to their unsaved text:
 
-- `LazyTextFieldSwitchPolicy.commit` (default since 2.1.0): the previous
+- `LazyTextFieldSwitchPolicy.commit` (default since 3.0.0): the previous
   cell's `onSave` (or `onCommit`) is called with its changed text, and the
   new cell gets focus immediately. The save runs in the background. The
   previous editor is already closed, so its text is kept as a draft: shown
@@ -121,11 +121,12 @@ saved: its text is kept as an `unsaved` draft (see
 `ListView` keeps a focused field alive by default, so there the editor simply
 stays open.
 
-> **Behavior change in 2.1.0:** switching cells used to drop the unsaved
+> **Behavior change in 3.0.0:** switching cells used to drop the unsaved
 > text. It is now passed to `onSave` / `onCommit`, and text of cells that
 > leave the tree is kept as an unsaved draft. Make `onSave` tolerate being
 > called for a cell that is no longer editing, or pass
-> `LazyTextFieldSwitchPolicy.discard`.
+> `LazyTextFieldSwitchPolicy.discard`. See
+> [Migrating from 2.x](#migrating-from-2x).
 
 ### Background saves with drafts
 
@@ -597,6 +598,60 @@ ScopedLazyTextField(
   as the same consumer: it gets the next change, and the current value is not
   re-sent, which would loop through `setState`. To hand the field to a
   different consumer, pass null for one build or give the field a new key.
+
+## Migrating from 2.x
+
+Code that uses only `LazyTextField` or `StatefulLazyTextField` needs no
+changes. 3.0 is a major version because `ScopedLazyTextField` with a
+`LazyTextFieldEditController` now keeps text that 2.x dropped, and saves in
+one queue. The API is the same, so your code compiles; check these
+behaviors:
+
+1. **Switching cells saves the text.** In 2.x, clicking another cell dropped
+   the text typed in the open one. Now `onSave` is called with it in the
+   background, after its editor has closed. Make sure `onSave` does not rely
+   on the cell still editing (its controller or context). If `onSave`
+   returns `false` or throws, the text stays as a failed draft. To keep the
+   2.x behavior:
+
+   ```dart
+   final editController = LazyTextFieldEditController(
+     switchPolicy: LazyTextFieldSwitchPolicy.discard,
+   );
+   ```
+
+2. **Cells that leave the tree keep their text.** A cell recycled for
+   another `cellId` or disposed by a virtualized grid while editing keeps
+   its text as an `unsaved` draft. It is saved when another cell starts
+   editing or by `saveDrafts()`, and otherwise never. Save it before the
+   user leaves the screen:
+
+   ```dart
+   final result = await editController.saveDrafts();
+   if (!result.allSaved) showUnsavedChangesDialog(result.remaining);
+   ```
+
+3. **`onSave` calls go through one save queue.** Saves of one cell never
+   overlap. With the default `LazyTextFieldSaveOrder.sequential`, saves of
+   different cells do not overlap either: a submit waits for earlier saves,
+   and its editor stays open until then. If your rows are independent and
+   the server is slow, use `saveOrder: LazyTextFieldSaveOrder.perRow` and
+   give cells a `rowKey`. Remove your own "latest save wins" or "save in
+   flight" guards; the queue does this.
+4. **`onSaved` runs after every successful save,** including saves on
+   switch, from `saveDrafts()`, and after the cell left the tree. Update
+   your model in it; do not use the cell's `BuildContext`.
+5. **Counters include `onSave`:** `pendingSaves`, `onSavesSettled`, and
+   `whenSavesSettled()` count `onSave` calls too.
+6. **`stopEditing(notify: false)` notifies after the frame,** so listeners
+   of the controller may see one more notification.
+
+Optional: if you kept your own draft map, save queue, or "Save all" logic
+around `ScopedLazyTextField`, see
+[Background saves with drafts](#background-saves-with-drafts) and
+[Unsaved drafts](#unsaved-drafts-save-all-and-local-storage): `onCommit`,
+`drafts`, `saveDrafts()`, and `draftStore` replace them. The
+[main demo](https://alexqwesa.github.io/lazy_text_field/) shows each option.
 
 ## Migrating from 1.x
 

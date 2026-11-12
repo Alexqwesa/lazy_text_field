@@ -30,6 +30,12 @@ class SavingDemoApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff0f766e)),
         useMaterial3: true,
+        tooltipTheme: const TooltipThemeData(
+          constraints: BoxConstraints(maxWidth: 360),
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          waitDuration: Duration(milliseconds: 300),
+          showDuration: Duration(seconds: 10),
+        ),
       ),
       home: SavingDemoScreen(api: api),
     );
@@ -500,6 +506,11 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
       appBar: AppBar(
         title: const Text('lazy_text_field'),
         actions: [
+          IconButton(
+            tooltip: 'What is this demo?',
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => _showAbout(context),
+          ),
           if (!wide)
             Builder(
               builder: (context) => IconButton(
@@ -525,6 +536,24 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
             SizedBox(width: 360, child: log),
           ],
         ],
+      ),
+    );
+  }
+
+  void _showAbout(BuildContext context) {
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('What is this demo?'),
+          content: const SizedBox(width: 520, child: _About()),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -779,27 +808,57 @@ class _Toolbar extends StatelessWidget {
         spacing: 8,
         runSpacing: 8,
         children: [
-          FilledButton.icon(
-            onPressed: busy ? null : () => state._saveAll(batch: false),
-            icon: const Icon(Icons.save_outlined),
-            label: const Text('Save all'),
+          Tooltip(
+            message:
+                'Problem: the user leaves the screen with edits that were '
+                'never sent (scrolled away, failed, or deferred).\n'
+                'saveDrafts() commits the open editor, saves every unsaved '
+                'and failed draft, waits for running saves, and reports '
+                'what is left.',
+            child: FilledButton.icon(
+              onPressed: busy ? null : () => state._saveAll(batch: false),
+              icon: const Icon(Icons.save_outlined),
+              label: const Text('Save all'),
+            ),
           ),
-          OutlinedButton.icon(
-            onPressed: busy ? null : () => state._saveAll(batch: true),
-            icon: const Icon(Icons.dynamic_feed_outlined),
-            label: const Text('Save all in one request'),
+          Tooltip(
+            message:
+                'Problem: 20 edited cells mean 20 requests.\n'
+                'saveDrafts(batch: ...) sends all drafts in one call, for '
+                'APIs with a bulk endpoint, and marks the ones the server '
+                'rejected as failed.',
+            child: OutlinedButton.icon(
+              onPressed: busy ? null : () => state._saveAll(batch: true),
+              icon: const Icon(Icons.dynamic_feed_outlined),
+              label: const Text('Save all in one request'),
+            ),
           ),
-          OutlinedButton.icon(
-            onPressed: busy ? null : () => state._reloadWhenIdle(),
-            icon: const Icon(Icons.refresh),
-            label: const Text('Reload from server'),
+          Tooltip(
+            message:
+                'Problem: refreshing data while the user types replaces the '
+                'cell under their cursor.\n'
+                'The reload waits for whenEditingDone(), so it never lands '
+                'under an open editor. It also runs after every burst of '
+                'saves (onSavesSettled).',
+            child: OutlinedButton.icon(
+              onPressed: busy ? null : () => state._reloadWhenIdle(),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reload from server'),
+            ),
           ),
-          OutlinedButton.icon(
-            onPressed: busy
-                ? null
-                : () => unawaited(state._restart('Restart', () {})),
-            icon: const Icon(Icons.restart_alt),
-            label: const Text('Restart (new controller)'),
+          Tooltip(
+            message:
+                'Simulates closing and reopening the app: a new edit '
+                'controller, so everything in memory is gone.\n'
+                'With "Draft store" on, unsaved and failed edits come back '
+                '(loadDrafts).',
+            child: OutlinedButton.icon(
+              onPressed: busy
+                  ? null
+                  : () => unawaited(state._restart('Restart', () {})),
+              icon: const Icon(Icons.restart_alt),
+              label: const Text('Restart (new controller)'),
+            ),
           ),
         ],
       ),
@@ -833,7 +892,14 @@ class _ViewControls extends StatelessWidget {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           Tooltip(
-            message: 'Note height: minHeight, maxHeight, editingMaxHeight',
+            message:
+                'Problem: long text in rows that should stay compact.\n'
+                'Fixed: every row keeps its height; the editor scrolls.\n'
+                'Full: rows grow to fit their text.\n'
+                'Edit full: rows stay compact while reading, and the editor '
+                'grows to show all the text while editing '
+                '(maxHeight + editingMaxHeight).\n'
+                'The red corner marks clipped text.',
             child: SegmentedButton<NoteHeight>(
               segments: const [
                 ButtonSegment(
@@ -858,7 +924,11 @@ class _ViewControls extends StatelessWidget {
             ),
           ),
           Tooltip(
-            message: 'startEditSelection: where the cursor goes on click',
+            message:
+                'Where the cursor lands when a cell opens '
+                '(startEditSelection):\n'
+                'Begin / End of the text, Click: where you clicked, '
+                'Select: all text selected, to type a new value over it.',
             child: SegmentedButton<LazyTextFieldStartEditSelection>(
               segments: const [
                 ButtonSegment(
@@ -887,34 +957,47 @@ class _ViewControls extends StatelessWidget {
                   set(() => state._startEditSelection = selection.single),
             ),
           ),
-          FilterChip(
-            avatar: const Icon(Icons.dashboard_customize, size: 18),
-            label: const Text('Icons'),
-            selected: state._showIcons,
-            onSelected: (value) => set(() => state._showIcons = value),
+          Tooltip(
+            message:
+                'Cells use a normal Material InputDecoration, with icons, '
+                'borders, and hints.\n'
+                'It stays mounted in both modes, so the text does not move '
+                'when the editor opens.',
+            child: FilterChip(
+              avatar: const Icon(Icons.dashboard_customize, size: 18),
+              label: const Text('Icons'),
+              selected: state._showIcons,
+              onSelected: (value) => set(() => state._showIcons = value),
+            ),
           ),
-          SizedBox(
-            width: 148,
-            child: DropdownMenu<double>(
-              key: ValueKey(state._fontSize),
-              initialSelection: state._fontSize,
-              label: const Text('Font size'),
-              leadingIcon: const Icon(Icons.format_size),
-              inputDecorationTheme: const InputDecorationTheme(
-                isDense: true,
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 8),
+          Tooltip(
+            message:
+                'Read-only cells paint text without a TextField, but with '
+                'the same layout as the editor: at any font size or style '
+                'the text wraps the same way and does not jump on click.',
+            child: SizedBox(
+              width: 148,
+              child: DropdownMenu<double>(
+                key: ValueKey(state._fontSize),
+                initialSelection: state._fontSize,
+                label: const Text('Font size'),
+                leadingIcon: const Icon(Icons.format_size),
+                inputDecorationTheme: const InputDecorationTheme(
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                ),
+                dropdownMenuEntries: [
+                  for (final size in _fontSizes)
+                    DropdownMenuEntry<double>(
+                      value: size,
+                      label: '${size.toInt()}',
+                    ),
+                ],
+                onSelected: (value) {
+                  if (value != null) set(() => state._fontSize = value);
+                },
               ),
-              dropdownMenuEntries: [
-                for (final size in _fontSizes)
-                  DropdownMenuEntry<double>(
-                    value: size,
-                    label: '${size.toInt()}',
-                  ),
-              ],
-              onSelected: (value) {
-                if (value != null) set(() => state._fontSize = value);
-              },
             ),
           ),
           PopupMenuButton<_TextStyleAction>(
@@ -1024,10 +1107,22 @@ class _SettingsPanel extends StatelessWidget {
       builder: (context, _) => ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Text(
+            'Each option below solves a problem of editable grids that '
+            'save to a server. Hover over an option to see which.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 16),
           const _SectionTitle('Mock API'),
           _Option<ApiFailure>(
             label: 'Failing calls',
             help: '"Every 2nd" fails calls #2, #4, …',
+            why:
+                'Problem: servers reject saves (validation, conflicts, no '
+                'network), and the user\'s typing must not be lost.\n'
+                'A failed save keeps the text as a failed draft (red icon). '
+                'Reopen the cell to see the error and retry; Escape '
+                'discards it.',
             value: api.failure,
             values: ApiFailure.values,
             labelOf: (value) => value.label,
@@ -1037,23 +1132,41 @@ class _SettingsPanel extends StatelessWidget {
               set(() {});
             },
           ),
-          Text(
-            'Latency: ${api.latency.inMilliseconds} ms',
-            style: Theme.of(context).textTheme.labelLarge,
-          ),
-          Slider(
-            value: api.latency.inMilliseconds.toDouble(),
-            max: 3000,
-            divisions: 30,
-            label: '${api.latency.inMilliseconds} ms',
-            onChanged: (value) =>
-                set(() => api.latency = Duration(milliseconds: value.round())),
+          _Why(
+            why:
+                'Problem: on a slow network, the user moves on before the '
+                'save finishes.\n'
+                'With a delay you can see the next cell open at once while '
+                'the previous one saves (cloud icon), saves wait in the '
+                'queue, and afterSave keeps the editor open until the '
+                'server answers.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _Label('Latency: ${api.latency.inMilliseconds} ms'),
+                Slider(
+                  value: api.latency.inMilliseconds.toDouble(),
+                  max: 3000,
+                  divisions: 30,
+                  label: '${api.latency.inMilliseconds} ms',
+                  onChanged: (value) => set(
+                    () => api.latency = Duration(milliseconds: value.round()),
+                  ),
+                ),
+              ],
+            ),
           ),
           Align(
             alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: api.resetCounters,
-              child: const Text('Reset "max in flight"'),
+            child: Tooltip(
+              message:
+                  '"Max in flight" in the status bar is how many saves ran '
+                  'at the same time. Reset it, then compare saveOrder '
+                  'sequential (always 1) with perRow.',
+              child: TextButton(
+                onPressed: api.resetCounters,
+                child: const Text('Reset "max in flight"'),
+              ),
             ),
           ),
           const Divider(height: 32),
@@ -1066,12 +1179,25 @@ class _SettingsPanel extends StatelessWidget {
                 : 'onSave: return true to close, false to keep editing.',
             value: state._saveCallback,
             values: SaveCallback.values,
+            why:
+                'Two ways to connect a cell to your API.\n'
+                'onCommit: your callback only sends the value (throw to '
+                'fail). The package keeps the text as a draft while it '
+                'saves, shows the status, and keeps it on failure.\n'
+                'onSave: you return true or false, so you decide whether the '
+                'editor may close, for example after validation.',
             labelOf: (value) => value.name,
             onChanged: (value) => set(() => state._saveCallback = value),
           ),
           _Option<LazyTextFieldSubmitClose>(
             label: 'closeOnSubmit (onCommit)',
             help: 'afterSave keeps the editor open until the save succeeds.',
+            why:
+                'What Enter does while the server is slow.\n'
+                'afterSave: the editor stays open until the server accepts '
+                'the value, and errors show right in the cell.\n'
+                'immediately: the editor closes at once and the value saves '
+                'in the background, for fast data entry.',
             value: state._closeOnSubmit,
             values: LazyTextFieldSubmitClose.values,
             labelOf: (value) => value.name,
@@ -1079,16 +1205,25 @@ class _SettingsPanel extends StatelessWidget {
                 ? (value) => set(() => state._closeOnSubmit = value)
                 : null,
           ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Keep the open editor alive'),
-            subtitle: const Text(
-              'ListView addAutomaticKeepAlives. Off: an editor scrolled out '
-              'of view is unmounted, as in grids that recycle cells.',
+          _Why(
+            why:
+                'Problem: virtualized grids destroy cells that scroll out '
+                'of view, including one being edited, and its text is '
+                'lost.\n'
+                'Off (as in such grids): the text is kept as an unsaved '
+                'draft (pencil icon) and saved later. On: Flutter\'s '
+                'ListView default keeps the editor alive offscreen.',
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const _Label('Keep the open editor alive', large: true),
+              subtitle: const Text(
+                'ListView addAutomaticKeepAlives. Off: an editor scrolled out '
+                'of view is unmounted, as in grids that recycle cells.',
+              ),
+              value: state._keepFocusedEditorAlive,
+              onChanged: (value) =>
+                  set(() => state._keepFocusedEditorAlive = value),
             ),
-            value: state._keepFocusedEditorAlive,
-            onChanged: (value) =>
-                set(() => state._keepFocusedEditorAlive = value),
           ),
           const Divider(height: 32),
           const _SectionTitle('Edit controller'),
@@ -1102,6 +1237,12 @@ class _SettingsPanel extends StatelessWidget {
             help:
                 'What happens to an open editor when another cell starts '
                 'editing.',
+            why:
+                'Problem: the user types in a cell, then clicks another one '
+                'without pressing Enter.\n'
+                'commit: the typed text is saved in the background while '
+                'the new cell opens at once.\n'
+                'discard: the text is dropped (the 2.x behavior).',
             value: state._switchPolicy,
             values: LazyTextFieldSwitchPolicy.values,
             labelOf: (value) => value.name,
@@ -1117,6 +1258,12 @@ class _SettingsPanel extends StatelessWidget {
             help:
                 'deferred keeps every edit as an unsaved draft until '
                 '"Save all".',
+            why:
+                'When edits are sent.\n'
+                'immediate: as soon as the user leaves the cell, as in a '
+                'spreadsheet.\n'
+                'deferred: edits wait as unsaved drafts until the user '
+                'presses "Save all", as in a form with a Save button.',
             value: state._saveMode,
             values: LazyTextFieldSaveMode.values,
             labelOf: (value) => value.name,
@@ -1132,6 +1279,13 @@ class _SettingsPanel extends StatelessWidget {
             help:
                 'perRow saves different rows in parallel (watch "max in '
                 'flight").',
+            why:
+                'Problem: concurrent saves can reach the server out of '
+                'order, and an older value overwrites a newer one.\n'
+                'sequential: one save at a time, in order.\n'
+                'perRow: different rows save in parallel (faster), one row '
+                'still saves in order.\n'
+                'Saves of the same cell never overlap in either mode.',
             value: state._saveOrder,
             values: LazyTextFieldSaveOrder.values,
             labelOf: (value) => value.name,
@@ -1142,19 +1296,26 @@ class _SettingsPanel extends StatelessWidget {
                   )
                 : null,
           ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Draft store'),
-            subtitle: const Text(
-              'Keeps unsaved and failed drafts across a restart.',
+          _Why(
+            why:
+                'Problem: unsaved and failed edits live only in memory, so '
+                'closing the app or a crash loses them.\n'
+                'A draft store (Hive, a file, ...) keeps them; loadDrafts() '
+                'brings them back. Press "Restart" to try.',
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const _Label('Draft store', large: true),
+              subtitle: const Text(
+                'Keeps unsaved and failed drafts across a restart.',
+              ),
+              value: state._persistDrafts,
+              onChanged: enabled
+                  ? (value) => state._changeController(
+                      'draft store',
+                      () => state._persistDrafts = value,
+                    )
+                  : null,
             ),
-            value: state._persistDrafts,
-            onChanged: enabled
-                ? (value) => state._changeController(
-                    'draft store',
-                    () => state._persistDrafts = value,
-                  )
-                : null,
           ),
           const Divider(height: 32),
           const _SectionTitle('Try'),
@@ -1219,6 +1380,7 @@ class _Option<T extends Object> extends StatelessWidget {
   const _Option({
     required this.label,
     required this.help,
+    required this.why,
     required this.value,
     required this.values,
     required this.labelOf,
@@ -1227,6 +1389,7 @@ class _Option<T extends Object> extends StatelessWidget {
 
   final String label;
   final String help;
+  final String why;
   final T value;
   final List<T> values;
   final String Function(T value) labelOf;
@@ -1236,27 +1399,105 @@ class _Option<T extends Object> extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final onChanged = this.onChanged;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: theme.textTheme.labelLarge),
-          const SizedBox(height: 6),
-          SegmentedButton<T>(
-            showSelectedIcon: false,
-            segments: [
-              for (final value in values)
-                ButtonSegment(value: value, label: Text(labelOf(value))),
-            ],
-            selected: {value},
-            onSelectionChanged: onChanged == null
-                ? null
-                : (selected) => onChanged(selected.single),
+    return _Why(
+      why: why,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _Label(label),
+            const SizedBox(height: 6),
+            SegmentedButton<T>(
+              showSelectedIcon: false,
+              segments: [
+                for (final value in values)
+                  ButtonSegment(value: value, label: Text(labelOf(value))),
+              ],
+              selected: {value},
+              onSelectionChanged: onChanged == null
+                  ? null
+                  : (selected) => onChanged(selected.single),
+            ),
+            const SizedBox(height: 4),
+            Text(help, style: theme.textTheme.bodySmall),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Explains, on hover, which problem [child] solves.
+class _Why extends StatelessWidget {
+  const _Why({required this.why, required this.child});
+
+  final String why;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(message: why, child: child);
+}
+
+/// An option label with a help icon that hints at its tooltip.
+class _Label extends StatelessWidget {
+  const _Label(this.text, {this.large = false});
+
+  final String text;
+
+  /// Uses the list tile title style instead of the option label style.
+  final bool large;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Flexible(
+          child: Text(
+            text,
+            style: large
+                ? theme.textTheme.bodyLarge
+                : theme.textTheme.labelLarge,
           ),
-          const SizedBox(height: 4),
-          Text(help, style: theme.textTheme.bodySmall),
-        ],
+        ),
+        const SizedBox(width: 4),
+        Icon(
+          Icons.help_outline,
+          size: 14,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ],
+    );
+  }
+}
+
+/// What the demo is for, shown from the app bar.
+class _About extends StatelessWidget {
+  const _About();
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodyMedium;
+    return SingleChildScrollView(
+      child: Text(
+        'A grid of editable cells that save to a server. Each cell is '
+        'plain painted text until you click it; only the cell you edit '
+        'gets a real TextField, so large grids stay fast.\n\n'
+        'The mock server can be slow or fail. The options on the left '
+        'show what happens to the user\'s typing in each case, which is '
+        'what lazy_text_field 3.0 manages for you:\n'
+        '• moving to another cell saves the previous one in the '
+        'background;\n'
+        '• a failed save keeps the text as a draft to retry;\n'
+        '• a cell that scrolls away while editing keeps its text;\n'
+        '• "Save all", batches, and a draft store that survives a '
+        'restart.\n\n'
+        'Icons next to cells: pencil = not sent yet, cloud with an arrow = '
+        'saving, cloud with a check = saved, red = failed. Hover over any '
+        'control to see which '
+        'problem it solves; the "Try" list has things to try.',
+        style: style,
       ),
     );
   }

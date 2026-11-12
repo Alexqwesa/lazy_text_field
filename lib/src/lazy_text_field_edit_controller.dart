@@ -34,7 +34,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// [saveOrder] defaults to [LazyTextFieldSaveOrder.sequential].
   ///
   /// [switchPolicy] decides whether switching cells commits or discards the
-  /// previous cell's text. Since 2.1.0 it defaults to
+  /// previous cell's text. Since 3.0.0 it defaults to
   /// [LazyTextFieldSwitchPolicy.commit]; pass
   /// [LazyTextFieldSwitchPolicy.discard] for the 2.0 behavior.
   LazyTextFieldEditController({

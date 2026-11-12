@@ -23,7 +23,7 @@ Use `StatefulLazyTextField` for local editing. Use
 one edit manager.
 
 When a scoped cell starts editing, the controller closes the others. With the
-default `LazyTextFieldSwitchPolicy.commit` (since 2.1.0) the closed cell's
+default `LazyTextFieldSwitchPolicy.commit` (since 3.0.0) the closed cell's
 `onSave` receives its changed text in the background and the new cell is
 focused immediately; if `onSave` returns `false` or throws, the text stays as
 a failed draft (reopen restores it, Escape discards it). An editing cell that
