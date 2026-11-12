@@ -72,7 +72,10 @@ void main() {
         await tester.pump(const Duration(milliseconds: 50));
         await tester.pump();
 
-        expect(identical(tester.state(decoratorFinder), decoratorState), isTrue);
+        expect(
+          identical(tester.state(decoratorFinder), decoratorState),
+          isTrue,
+        );
         expect(find.byType(TextField), findsOneWidget);
         expect(
           find.byKey(LazyTextFieldKeys.editorSurface(cellId)),
@@ -90,7 +93,10 @@ void main() {
         await tester.pump(const Duration(milliseconds: 16));
         await tester.pump();
 
-        expect(identical(tester.state(decoratorFinder), decoratorState), isTrue);
+        expect(
+          identical(tester.state(decoratorFinder), decoratorState),
+          isTrue,
+        );
         expect(find.byType(TextField), findsNothing);
         final back = _snapshot(tester, cellId);
         _expectGeometryStable(back, before, label: 'edit→display');
@@ -343,7 +349,9 @@ void main() {
       );
     });
 
-    testWidgets('fixed icon slot AnimatedOpacity keeps viewport', (tester) async {
+    testWidgets('fixed icon slot AnimatedOpacity keeps viewport', (
+      tester,
+    ) async {
       final harness = GlobalKey<_ContractHarnessState>();
       await tester.pumpWidget(
         _App(
@@ -536,7 +544,8 @@ void _expectGeometryStable(
   expect(
     actual.baseline,
     closeTo(expected.baseline, tolerance),
-    reason: '$label.baseline actual=${actual.baseline} '
+    reason:
+        '$label.baseline actual=${actual.baseline} '
         'expected=${expected.baseline}',
   );
 }
