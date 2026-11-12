@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] - 2026-11-12
+
+### Fixed
+
+- `ScopedLazyTextField`: an `onSave` submit that finished after the user had
+  typed on, or closed and reopened the cell, closed the editor and dropped
+  the newer text. The editor now closes only if it still shows the saved
+  text.
+- `ScopedLazyTextField`: `onSave` calls of one cell no longer overlap. A
+  submit while a save is running (ignored before, or sent at once after
+  Escape) now waits for it and then saves the current text, so an older save
+  can no longer finish last and overwrite a newer value.
+- `ScopedLazyTextField`: an exception thrown by `onSave` blocked every later
+  save of the cell. It is now reported to `FlutterError` and treated as
+  `false`.
+- Recycling an editing `ScopedLazyTextField` for a new `cellId` notified the
+  scope during build (`markNeedsBuild() called during build`).
+- `LazyTextField` over `maxLength` set an empty `errorText` on the
+  decoration. Only the counter takes the error color now; the border no
+  longer turns red.
+
+### Added
+
+- `LazyTextField.isDecorationLayoutStable(decoration)`: the check behind the
+  debug assert for unsupported `InputDecoration` error slots. The assert now
+  also rejects `errorText: ''`.
+
 ## [2.0.2] - 2026-10-13
 
 ### Fixed

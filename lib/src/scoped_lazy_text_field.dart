@@ -48,6 +48,11 @@ class ScopedLazyTextField extends StatefulWidget {
 
   /// Primary commit path: return true to accept and exit edit mode, or false
   /// to keep editing (e.g. validation failed).
+  ///
+  /// Calls for one cell never overlap: a submit while a save is running waits
+  /// for it and then saves the editor's current text. The editor closes only
+  /// if it still shows the saved text. An exception is reported to
+  /// [FlutterError] and treated as `false`.
   final LazyTextFieldSave onSave;
 
   /// Whether the field should lay out and edit as one line.
@@ -133,7 +138,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   FocusNode? _attachedFocusNode;
   FocusOnKeyEventCallback? _previousHandler;
   int _editEpoch = 0;
-  bool _saveInFlight = false;
+  bool _saving = false;
+  bool _resubmit = false;
 
   @override
   void didUpdateWidget(covariant ScopedLazyTextField oldWidget) {
@@ -141,7 +147,9 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     if (oldWidget.cellId != widget.cellId) {
       _invalidateEditSession();
       _detachKeyboardHandler();
-      _editController?.stopEditing(oldWidget.cellId);
+      // This runs during build, where notifying the scope would mark an
+      // ancestor dirty; this cell rebuilds anyway.
+      _editController?.stopEditing(oldWidget.cellId, notify: false);
     }
   }
 
@@ -271,19 +279,48 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   }
 
   Future<void> _save(String value) async {
-    if (_saveInFlight ||
-        !(_editController?.isEditing(widget.cellId) ?? false)) {
+    final editController = _editController;
+    final cellId = widget.cellId;
+    final editor = editController?.controllerFor(cellId);
+    if (editController == null || editor == null) return;
+    if (_saving) {
+      // Never overlap saves of this cell: an older save that finished last
+      // could overwrite the newer value. Save again when it is done.
+      _resubmit = true;
       return;
     }
-    _saveInFlight = true;
+    _saving = true;
     final epoch = _editEpoch;
-    final cellId = widget.cellId;
-    final ok = await widget.onSave(value);
-    if (!mounted || epoch != _editEpoch || widget.cellId != cellId) return;
-    _saveInFlight = false;
-    if (!ok) return;
-    _editController?.stopEditing(widget.cellId);
-    widget.onSaved?.call(value);
+    bool ok;
+    try {
+      ok = await widget.onSave(value);
+    } catch (error, stack) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'lazy_text_field',
+          context: ErrorDescription('while running ScopedLazyTextField.onSave'),
+        ),
+      );
+      ok = false;
+    } finally {
+      _saving = false;
+    }
+    if (!mounted) return;
+    final resubmit = _resubmit;
+    _resubmit = false;
+    if (ok && epoch == _editEpoch && widget.cellId == cellId) {
+      // Close only the editor that submitted, and only if it still shows the
+      // saved text: the user may have typed on, or closed and reopened it.
+      if (identical(editController.controllerFor(cellId), editor) &&
+          editor.text == value) {
+        editController.stopEditing(cellId);
+      }
+      widget.onSaved?.call(value);
+    }
+    final current = _editController?.controllerFor(widget.cellId);
+    if (resubmit && current != null) unawaited(_save(current.text));
   }
 
   void _cancel() {
@@ -294,6 +331,6 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
 
   void _invalidateEditSession() {
     _editEpoch++;
-    _saveInFlight = false;
+    _resubmit = false;
   }
 }
