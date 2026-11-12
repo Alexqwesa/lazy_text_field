@@ -19,32 +19,26 @@ for validation without layout shifts.
 
 ## Live demo
 
-[Open the live demo](https://alexqwesa.github.io/lazy_text_field/)
+### Main demo: data saving (3.0)
 
-The demo is the default example: `ScopedLazyTextField` cells in a list that
-unmounts them, saved to a mock API that can be slow or fail. Switches cover
-the save options (`switchPolicy`, `saveMode`, `saveOrder`, a draft store),
-cell heights, edit selection, and text style; a status bar and an event log
-show drafts and saves.
+[Open the main demo](https://alexqwesa.github.io/lazy_text_field/)
 
-[The table demo](https://alexqwesa.github.io/lazy_text_field/table/) covers
-native decoration, constrained wrapping, bounded editing, overflow markers,
-selection policies, and lazy controller allocation. The whole page mounts
-only one real `TextField` / `EditableText` at a time.
+Explore `ScopedLazyTextField` with queued saves, draft recovery, mock API failures, and virtualized cells. 
+Configure save policies, draft storage, cell height, and text styling. 
+Monitor changes through a live status bar and event log.
 
-Run them locally:
+### Basic demo: standalone fields
 
-```sh
-cd example
-flutter run -d chrome
-flutter run -d chrome -t lib/main_live_demo.dart
-```
+[Open the basic demo](https://alexqwesa.github.io/lazy_text_field/basic/)
+
+Explore `LazyTextField` without a shared save controller. Demonstrates native decorations, 
+text wrapping, overflow handling, selection, and lazy editor allocation.
 
 ## Installation
 
 ```yaml
 dependencies:
-  lazy_text_field: ^2.1.0
+  lazy_text_field: ^3.0.0
 ```
 
 ```dart
@@ -72,25 +66,23 @@ import 'package:lazy_text_field/lazy_text_field.dart';
 ## Usage
 
 ```dart
-LazyTextField
-(
-cellId: 'row-42-title',
-text: value,
-isEditing: controller != null && focusNode != null,
-controller: controller,
-focusNode: focusNode,
-style: const TextStyle(fontSize: 14, height: 1.25),
-decoration: const InputDecoration(
-filled: true,
-border: OutlineInputBorder(),
-labelText: 'Title',
-hintText: 'Click to edit',
-prefixIcon: Icon(Icons.notes),
-contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-),
-onStartEditing: startEditing,
-onChanged: updateDraft
-,
+LazyTextField(
+  cellId: 'row-42-title',
+  text: value,
+  isEditing: controller != null && focusNode != null,
+  controller: controller,
+  focusNode: focusNode,
+  style: const TextStyle(fontSize: 14, height: 1.25),
+  decoration: const InputDecoration(
+    filled: true,
+    border: OutlineInputBorder(),
+    labelText: 'Title',
+    hintText: 'Click to edit',
+    prefixIcon: Icon(Icons.notes),
+    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+  ),
+  onStartEditing: startEditing,
+  onChanged: updateDraft,
 )
 ```
 
@@ -400,20 +392,19 @@ overlay without changing the field's layout. Keep `onSave` as the commit gate:
 ```dart
 String? error;
 
-StatefulLazyTextField
-(
-cellId: 'quantity',
-text: quantity,
-errorMessage: error,
-onChanged: (_) => setState(() => error = null),
-onSave: (value) {
-if (value.isEmpty) {
-setState(() => error = 'Required');
-return false;
-}
-setState(() => error = null);
-return saveQuantity(value);
-},
+StatefulLazyTextField(
+  cellId: 'quantity',
+  text: quantity,
+  errorMessage: error,
+  onChanged: (_) => setState(() => error = null),
+  onSave: (value) {
+    if (value.isEmpty) {
+      setState(() => error = 'Required');
+      return false;
+    }
+    setState(() => error = null);
+    return saveQuantity(value);
+  },
 )
 ```
 
@@ -427,20 +418,16 @@ For controls that appear only during editing, reserve their layout space in both
 modes and change only their visibility:
 
 ```dart
-InputDecoration
-(
-suffixIconConstraints: const BoxConstraints.tightFor(
-width: 40,
-height: 40,
-),
-suffixIcon: IgnorePointer(
-ignoring: !isEditing,
-child: AnimatedOpacity(
-duration: const Duration(milliseconds: 150),
-opacity: isEditing ? 1 : 0,
-child: const Icon(Icons.check),
-),
-),
+InputDecoration(
+  suffixIconConstraints: const BoxConstraints.tightFor(width: 40, height: 40),
+  suffixIcon: IgnorePointer(
+    ignoring: !isEditing,
+    child: AnimatedOpacity(
+      duration: const Duration(milliseconds: 150),
+      opacity: isEditing ? 1 : 0,
+      child: const Icon(Icons.check),
+    ),
+  ),
 )
 ```
 
@@ -448,36 +435,30 @@ Alternatively, use an external overlay. Reserve its width in both modes when it
 must not cover text:
 
 ```dart
-Stack
-(
-children: [
-LazyTextField(
-cellId: cellId,
-text: value,
-isEditing: isEditing,
-controller: controller,
-focusNode: focusNode,
-reservedTrailingWidth: 40,
-decoration: const InputDecoration(
-border: OutlineInputBorder(),
-contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-),
-onStartEditing: startEditing,
-),
-if (isEditing)
-const PositionedDirectional(
-end: 0,
-top: 0,
-width: 40,
-bottom: 0,
-child: Icon(Icons.
-check
-)
-,
-)
-,
-]
-,
+Stack(
+  children: [
+    LazyTextField(
+      cellId: cellId,
+      text: value,
+      isEditing: isEditing,
+      controller: controller,
+      focusNode: focusNode,
+      reservedTrailingWidth: 40,
+      decoration: const InputDecoration(
+        border: OutlineInputBorder(),
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      ),
+      onStartEditing: startEditing,
+    ),
+    if (isEditing)
+      const PositionedDirectional(
+        end: 0,
+        top: 0,
+        width: 40,
+        bottom: 0,
+        child: Icon(Icons.check),
+      ),
+  ],
 )
 ```
 
@@ -490,20 +471,19 @@ When read-only text is clipped by `maxHeight`, a corner marker is shown.
 Customize or hide it with `overflowMarkerBuilder`:
 
 ```dart
-LazyTextField
-(
-cellId: 'row-42-notes',
-text: value,
-isEditing: false,
-maxHeight: 48,
-onStartEditing: startEditing,
-overflowMarkerBuilder: (context, details) {
-return Icon(
-details.expanded ? Icons.unfold_less : Icons.more_horiz,
-size: details.size,
-color: details.color,
-);
-},
+LazyTextField(
+  cellId: 'row-42-notes',
+  text: value,
+  isEditing: false,
+  maxHeight: 48,
+  onStartEditing: startEditing,
+  overflowMarkerBuilder: (context, details) {
+    return Icon(
+      details.expanded ? Icons.unfold_less : Icons.more_horiz,
+      size: details.size,
+      color: details.color,
+    );
+  },
 )
 ```
 
@@ -513,19 +493,13 @@ helper, error, and counter regions remain outside that viewport.
 For uniform table rows, set both bounds to the same finite value:
 
 ```dart
-LazyTextField
-(
-cellId: row.id,
-text: row.value,
-isEditing: isEditing,
-minHeight: 40,
-maxHeight:
-40
-,
-onStartEditing
-:
-startEditing
-,
+LazyTextField(
+  cellId: row.id,
+  text: row.value,
+  isEditing: isEditing,
+  minHeight: 40,
+  maxHeight: 40,
+  onStartEditing: startEditing,
 )
 ```
 
@@ -540,7 +514,6 @@ painting, hit testing, and overflow detection.
 `LazyTextFieldMetrics` measure the undecorated text viewport exactly:
 
 ```dart
-
 final viewportHeight = LazyTextField.computeHeightForWidth(
   text: value,
   width: columnWidth,

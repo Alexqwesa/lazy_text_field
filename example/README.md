@@ -26,8 +26,8 @@ A single `StatefulLazyTextField`:
 flutter run -d chrome -t lib/main_simple.dart
 ```
 
-The browser demo used by GitHub Pages (a table with `LazyTextField` cells
-whose edit state the screen keeps itself):
+The basic demo, published on GitHub Pages under `/basic/`: `LazyTextField`
+cells whose edit state the screen keeps itself, without a save controller:
 
 ```sh
 flutter run -d chrome -t lib/main_live_demo.dart
