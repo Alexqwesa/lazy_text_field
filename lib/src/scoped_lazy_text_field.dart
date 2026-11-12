@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lazy_text_field/src/lazy_text_field.dart';
+import 'package:lazy_text_field/src/lazy_text_field_shortcuts.dart';
 import 'package:lazy_text_field/src/lazy_text_field_controller_scope.dart';
 import 'package:lazy_text_field/src/lazy_text_field_drafts.dart';
 import 'package:lazy_text_field/src/lazy_text_field_edit_controller.dart';
@@ -39,6 +40,7 @@ class ScopedLazyTextField extends StatefulWidget {
     this.startEditSelection = LazyTextFieldStartEditSelection.end,
     this.readOnlyAsLink = false,
     this.chainEditorScroll = true,
+    this.shortcuts,
     this.allowMultipleActiveEdits = false,
     this.inputFormatters,
     this.onChanged,
@@ -165,6 +167,11 @@ class ScopedLazyTextField extends StatefulWidget {
 
   /// {@macro lazy_text_field.chainEditorScroll}
   final bool chainEditorScroll;
+
+  /// What keys do in the open editor. Null (default) uses the closest
+  /// [LazyTextFieldShortcuts] above this field, or
+  /// [LazyTextFieldShortcuts.defaults].
+  final Map<ShortcutActivator, LazyTextFieldAction>? shortcuts;
 
   /// Whether this field can edit while other scoped fields remain active.
   final bool allowMultipleActiveEdits;
@@ -489,17 +496,18 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     final controller = _editController?.controllerFor(widget.cellId);
     if (controller == null) return KeyEventResult.ignored;
 
-    final isEnter =
-        event.logicalKey == LogicalKeyboardKey.enter ||
-        event.logicalKey == LogicalKeyboardKey.numpadEnter;
-    if (event.logicalKey == LogicalKeyboardKey.escape) {
+    final action = LazyTextFieldShortcuts.actionFor(
+      event,
+      widget.shortcuts ?? LazyTextFieldShortcuts.of(context),
+    );
+    if (action == LazyTextFieldAction.cancel) {
       _cancel();
       return KeyEventResult.handled;
     }
-    if ((HardwareKeyboard.instance.isControlPressed &&
-            event.logicalKey == LogicalKeyboardKey.keyS) ||
-        (HardwareKeyboard.instance.isControlPressed && isEnter) ||
-        (widget.singleLine && isEnter)) {
+    final isEnter =
+        event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    if (action == LazyTextFieldAction.save || (widget.singleLine && isEnter)) {
       unawaited(_save(controller.text));
       return KeyEventResult.handled;
     }

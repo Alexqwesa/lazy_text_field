@@ -32,6 +32,10 @@ cell starts editing or by `saveDrafts()`, and never saved otherwise;
 `clearDraft(key)` drops it. Do not reimplement commit-on-switch in
 `onWillStartEditing`.
 
+Editor keys (Escape cancels; Ctrl/Cmd+S and Ctrl/Cmd+Enter save) are set with
+`LazyTextFieldShortcuts` above the fields or a field's `shortcuts` parameter,
+not with Flutter's `Shortcuts` widget, which the field's focus node bypasses.
+
 ## Background Saves
 
 `unsaved` drafts are not saved on their own. Call

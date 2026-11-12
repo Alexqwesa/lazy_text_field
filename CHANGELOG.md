@@ -14,6 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a mouse-wheel scroll over an editor whose text scrolls does not move the
   page once the text reaches its top or bottom. The default `true` keeps
   Flutter's behavior.
+- Configurable editor keys for `StatefulLazyTextField` and
+  `ScopedLazyTextField`: `LazyTextFieldShortcuts` sets them for every field
+  below it, and a field's `shortcuts` parameter for that field.
+  `LazyTextFieldAction` is `save` or `cancel`; keys are Flutter
+  `ShortcutActivator`s. Leave a key out of the map to turn it off.
+  `LazyTextFieldShortcuts.defaults` is the default set.
+
+### Changed
+
+- Cmd+S and Cmd+Enter (macOS) now save, like Ctrl+S and Ctrl+Enter.
+- Shortcuts match their modifiers exactly: Ctrl+Shift+S no longer saves, and
+  Escape with a modifier no longer cancels.
 
 
 ## [3.0.0] - 2026-11-11

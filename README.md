@@ -92,6 +92,35 @@ for both in read-only mode.
 `StatefulLazyTextField` and `ScopedLazyTextField` support
 `startEditSelection`: `beginning`, `end`, `tapPosition`, or `fullSelection`.
 
+### Keyboard shortcuts
+
+In an open `StatefulLazyTextField` or `ScopedLazyTextField` editor:
+
+| Key | Action |
+|---|---|
+| Ctrl+S, Cmd+S, Ctrl+Enter, Cmd+Enter | save |
+| Escape | cancel: close without saving (a scoped cell also discards its unsaved or failed draft) |
+| Enter in a `singleLine` field | save (always on) |
+
+Change them for every field below a `LazyTextFieldShortcuts`, or for one
+field with its `shortcuts` parameter. Leave a key out of the map to turn it
+off:
+
+```dart
+LazyTextFieldShortcuts(
+  shortcuts: {
+    // Escape is left to the surrounding dialog.
+    LazyTextFieldShortcuts.controlS: LazyTextFieldAction.save,
+    LazyTextFieldShortcuts.metaS: LazyTextFieldAction.save,
+    const SingleActivator(LogicalKeyboardKey.f2): LazyTextFieldAction.cancel,
+  },
+  child: grid,
+)
+```
+
+The field's focus node sees keys before a `Shortcuts` widget above it, so a
+`Shortcuts` widget cannot change these keys; use `LazyTextFieldShortcuts`.
+
 ### Switching between scoped cells
 
 When a `ScopedLazyTextField` starts editing, the shared
