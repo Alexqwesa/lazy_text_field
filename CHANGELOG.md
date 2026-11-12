@@ -5,93 +5,124 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.1.0] - 2026-11-11
+## [3.0.0] - 2026-11-11
 
-### Changed
+Most of this release is about saving with `ScopedLazyTextField` and
+`LazyTextFieldEditController`: text in a closed editor is no longer dropped,
+and all saves run in one queue with drafts. For `LazyTextField` and
+`StatefulLazyTextField` the only new option is a taller editor. Includes the
+fixes from 2.0.3. The changes to `ScopedLazyTextField` and
+`LazyTextFieldEditController` in short:
 
-- **Behavior change:** when a `ScopedLazyTextField` editor closes because
-  another cell starts editing, its changed text is now passed to `onSave`
-  instead of being dropped. The new cell is focused immediately and the save
-  runs in the background. The text is kept as a draft, and as a failed draft
-  if `onSave` returns `false` or throws; reopening the cell restores it and
-  Escape discards it.
-- **Behavior change:** an editing cell that leaves the tree (recycled for
-  another `cellId`, or disposed, e.g. by a virtualized grid) keeps its changed
-  text as an `unsaved` draft instead of dropping it. It is saved when another
-  cell starts editing or by `saveDrafts()`. **If neither happens, it is never
-  saved**; it lives in memory only unless a `draftStore` is set.
-- To keep the 2.0 behavior for both, create the controller with
+- Text left in an editor is now saved or kept as a draft, instead of being
+  dropped. To keep the 2.0 behavior, pass
   `LazyTextFieldEditController(switchPolicy: LazyTextFieldSwitchPolicy.discard)`.
-- An exception thrown by `onSave` is reported to `FlutterError` and treated as
-  a rejection, instead of leaving later saves blocked.
-- **Behavior change:** `onSave` calls now go through the controller's save
-  queue, like `onCommit`. Saves of the same cell never overlap, so an older
-  save can no longer finish last and overwrite a newer value. Under the
-  default `LazyTextFieldSaveOrder.sequential`, a submit also waits for
-  earlier saves of other cells (its editor stays open until then); use
-  `perRow` with `rowKey` to save rows in parallel. `pendingSaves` and
-  `onSavesSettled` now count `onSave` calls too.
-- **Behavior change:** `ScopedLazyTextField.onSaved` is called after every
-  successful save of the cell, also from `saveDrafts()` and flushes, and also
-  after the cell left the tree. Batches do not call it.
+- All saves of a cell, including background ones, run in one queue. By
+  default, saves of different cells run one at a time too.
+- `onSaved` is called after background saves as well.
 
-### Fixed
+### LazyTextField, StatefulLazyTextField
 
-- An `onSave` submit followed by more typing no longer closes the editor
-  (and drops the newer text) when the first save finishes; a second submit
-  queues behind the first.
-- A save that finished after its cell had been closed and reopened could
-  close the new editor.
-- Recycling an editing `ScopedLazyTextField` for a new `cellId` notified the
-  scope during build (`markNeedsBuild() called during build`).
+#### Added
 
-### Added
+- `editingMaxHeight` and `onEditingExtraHeightChanged` (also on
+  `ScopedLazyTextField`): the editor can grow taller than the read-only
+  `maxHeight`, and the field reports how much taller it is (measured by its
+  own layout) so a grid can grow the row while it edits.
+
+### ScopedLazyTextField, LazyTextFieldEditController
+
+#### Changed
+
+- **Behavior change: text in a closed editor is kept.**
+  - When another cell starts editing, the closed cell's changed text is saved
+    with `onSave` in the background, and the new cell gets focus at once.
+  - When an editing cell leaves the tree (recycled for another `cellId`, or
+    disposed by a virtualized grid), its text becomes an `unsaved` draft. It
+    is saved when another cell starts editing or by `saveDrafts()`. **If
+    neither happens, it is never saved**, and it stays in memory only unless
+    a `draftStore` is set.
+  - If a save returns `false` or throws, the text stays as a failed draft:
+    reopening the cell restores it, and Escape discards it.
+  - `switchPolicy: LazyTextFieldSwitchPolicy.discard` keeps the 2.0 behavior
+    in all of these cases.
+- **Behavior change:** `onSave` calls go through the controller's save
+  queue, like the new `onCommit`.
+  - Saves of the same cell never overlap, including saves on switch and
+    from `saveDrafts()` (2.0.3 already did this for submits).
+  - Under the default `LazyTextFieldSaveOrder.sequential`, a submit also
+    waits for earlier saves of other cells, and its editor stays open until
+    then. Use `perRow` with `rowKey` to save different rows in parallel.
+  - `pendingSaves` and `onSavesSettled` count `onSave` calls.
+- **Behavior change:** `onSaved` is called after every successful save of
+  the cell: on submit, on switch, from `saveDrafts()`, and after the cell
+  left the tree. Batches do not call it.
+
+#### Added
 
 - `LazyTextFieldSwitchPolicy` (`commit`, `discard`) and
   `LazyTextFieldEditController.switchPolicy`.
-- `LazyTextFieldEditController.setCommitHandler` / `removeCommitHandler`
-  (`LazyTextFieldCommitHandler`) for custom cells that want commit-on-switch.
-  `ScopedLazyTextField` registers one automatically while editing.
-- Drafts and a background save queue on `LazyTextFieldEditController`:
-  committed values outlive their cells and are saved in the background.
-  New members: `draftFor`, `displayText`, `clearDraft`, `pendingSaves`,
-  `enqueue`, `saveOrder`. Works with the scope's own controller, no setup.
-- `LazyTextFieldDraft` and `LazyTextFieldDraftStatus` (`pending`, `saved`,
-  `failed`).
-- `LazyTextFieldSaveOrder`: `sequential` (default, one commit at a time) or
-  `perRow` (different `rowKey`s save in parallel).
-- `LazyTextFieldDraftStatus.unsaved` and `LazyTextFieldSaveMode`
-  (`immediate`, `deferred`) for "Save all" screens.
-- `LazyTextFieldEditController.saveDrafts({batch, includeOpenEdits})`
-  (returns `LazyTextFieldSaveDraftsResult` with `remaining`; `allSaved` is
-  false while any change is left, including text changed during the save),
-  `commitAll()`, `drafts`, `holdDraft`, `setDraftSaver`
-  (`LazyTextFieldDraftSaver`), and `LazyTextFieldBatchCommit`.
-- `LazyTextFieldDraftStore` (`draftStore`, `loadDrafts()`),
-  `LazyTextFieldStoredDraft` (JSON), and `LazyTextFieldMemoryDraftStore`, to
-  keep unsaved drafts across restarts (for example in Hive). Store calls run
-  one at a time, in order. `whenDraftsStored()` waits for them, retries
-  failed writes, and reports whether every draft is stored;
-  `draftStoreErrors` lists failed writes.
-- `startEditing(draftKey:)` so the draft being continued is not saved.
-- `LazyTextFieldEditController.trackDraft`: shows a value as a draft while a
-  save that reports success as a `bool` runs in the save queue, and keeps it
-  if that save fails. `queueSave` runs such a save in the queue without a
-  draft. `enqueue` and `trackDraft` take `notify: false` for use in
-  `State.dispose`.
-- `ScopedLazyTextField.onCommit`, `draftKey`, `rowKey`, `closeOnSubmit`
-  (`LazyTextFieldSubmitClose.afterSave` / `immediately`), and
-  `errorMessageOf`. `onSave` is now optional; provide exactly one of `onSave`
-  or `onCommit`.
-- `LazyTextFieldEditController.whenEditingDone()`: completes when no cell is
-  editing; switching cells does not complete it.
-- `LazyTextFieldEditController.onSavesSettled` (`LazyTextFieldSavesSettled`)
-  and `whenSavesSettled()`: signal when the save queue becomes empty, with
-  saved/failed counts.
-- `editingMaxHeight` and `onEditingExtraHeightChanged` on `LazyTextField`,
-  `StatefulLazyTextField`, and `ScopedLazyTextField`: the editor can grow
-  beyond the read-only `maxHeight`, and the field reports the extra height
-  (measured by its own layout) so a grid can grow the row while it edits.
+- Cell options:
+  - `onCommit` (throw to fail), an alternative to `onSave`; give exactly one
+    of the two.
+  - `draftKey` and `rowKey`.
+  - `closeOnSubmit` (`LazyTextFieldSubmitClose.afterSave` / `immediately`).
+  - `errorMessageOf`.
+- Drafts: `LazyTextFieldDraft` with `LazyTextFieldDraftStatus`
+  (`pending`, `saved`, `failed`, `unsaved`). Controller members: `drafts`,
+  `draftFor`, `displayText`, `clearDraft`, `holdDraft`, and
+  `startEditing(draftKey:)`.
+- The save queue: `LazyTextFieldSaveOrder` (`sequential` or `perRow`),
+  `saveOrder`, `pendingSaves`, `onSavesSettled` (`LazyTextFieldSavesSettled`),
+  `whenSavesSettled()`, and `whenEditingDone()` (switching cells does not
+  complete it).
+- For custom cells, saves in the queue:
+  - `enqueue` saves a value as a draft.
+  - `trackDraft` shows a value as a draft while a save you run reports
+    success as a `bool`.
+  - `queueSave` runs a save without a draft.
+  - `setCommitHandler` / `removeCommitHandler`
+    (`LazyTextFieldCommitHandler`) add commit-on-switch.
+- "Save all" screens:
+  - `LazyTextFieldSaveMode` (`immediate`, `deferred`).
+  - `saveDrafts({batch, includeOpenEdits})` returns a
+    `LazyTextFieldSaveDraftsResult`. It commits open editors and waits for
+    running saves. `allSaved` is false while anything is `remaining`.
+  - `commitAll()`, `setDraftSaver` (`LazyTextFieldDraftSaver`), and
+    `LazyTextFieldBatchCommit`.
+- Keeping drafts across restarts:
+  - `LazyTextFieldDraftStore` (`draftStore`, `loadDrafts()`),
+    `LazyTextFieldStoredDraft` (JSON), and `LazyTextFieldMemoryDraftStore`.
+  - Store calls run one at a time, in order.
+  - `whenDraftsStored()` retries failed writes and reports whether every
+    draft is stored. `draftStoreErrors` lists the failed writes.
+
+## [2.0.3] - 2026-11-12
+
+### Fixed
+
+- `ScopedLazyTextField`: an `onSave` submit that finished after the user had
+  typed on, or closed and reopened the cell, closed the editor and dropped
+  the newer text. The editor now closes only if it still shows the saved
+  text.
+- `ScopedLazyTextField`: `onSave` calls of one cell no longer overlap. A
+  submit while a save is running (ignored before, or sent at once after
+  Escape) now waits for it and then saves the current text, so an older save
+  can no longer finish last and overwrite a newer value.
+- `ScopedLazyTextField`: an exception thrown by `onSave` blocked every later
+  save of the cell. It is now reported to `FlutterError` and treated as
+  `false`.
+- Recycling an editing `ScopedLazyTextField` for a new `cellId` notified the
+  scope during build (`markNeedsBuild() called during build`).
+- `LazyTextField` over `maxLength` set an empty `errorText` on the
+  decoration. Only the counter takes the error color now; the border no
+  longer turns red.
+
+### Added
+
+- `LazyTextField.isDecorationLayoutStable(decoration)`: the check behind the
+  debug assert for unsupported `InputDecoration` error slots. The assert now
+  also rejects `errorText: ''`.
 
 ## [2.0.2] - 2026-10-13
 
