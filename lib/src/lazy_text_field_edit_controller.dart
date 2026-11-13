@@ -28,6 +28,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     this.saveOrder = LazyTextFieldSaveOrder.sequential,
     this.onSavesSettled,
     this.draftStore,
+    this.storeOpenEditsAfter,
   });
 
   /// When [ScopedLazyTextField.onCommit] cells save.
@@ -54,6 +55,14 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// return false. Call [loadDrafts] at startup to restore them.
   final LazyTextFieldDraftStore? draftStore;
 
+  /// How long after the last keystroke the text of open editors is written
+  /// to [draftStore] ([storeOpenEdits]); null (default) writes it only when
+  /// an editor closes or [storeOpenEdits] is called.
+  ///
+  /// Without it, text in an open editor reaches the store only when the
+  /// editor closes, so an app killed while the user types loses that text.
+  final Duration? storeOpenEditsAfter;
+
   /// Called each time the save queue becomes empty, for example to refresh
   /// the data once after a burst of saves.
   ///
@@ -67,6 +76,8 @@ class LazyTextFieldEditController extends ChangeNotifier {
       <String, LazyTextFieldCommitHandler>{};
   final Map<String, LazyTextFieldCommitHandler> _keepHandlers =
       <String, LazyTextFieldCommitHandler>{};
+  final Map<String, _OpenEdit> _openEdits = <String, _OpenEdit>{};
+  Timer? _storeOpenEditsTimer;
   int _editRequest = 0;
   Completer<void>? _editingDone;
   bool _switching = false;
@@ -204,6 +215,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     final focusNode = FocusNode(debugLabel: 'lazy-text-field-$cellId');
     _controllers[cellId] = controller;
     _focusNodes[cellId] = focusNode;
+    _trackOpenEdit(cellId, controller, draftKey ?? cellId, initialValue);
     notifyListeners();
 
     SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -231,7 +243,125 @@ class LazyTextFieldEditController extends ChangeNotifier {
 
   /// Every draft, by key; filter by [LazyTextFieldDraft.status], for example
   /// to show how many changes are not saved yet.
+  ///
+  /// Text in an open editor is not a draft; [unsavedChanges] includes it.
   Map<Object, LazyTextFieldDraft> get drafts => _drafts.drafts;
+
+  /// Everything not saved yet, one entry per draft key: drafts that are
+  /// unsaved, saving, or failed, and open editors whose text differs from
+  /// the text they opened with.
+  ///
+  /// For an open editor that continues a draft, the entry has the editor's
+  /// text and the draft. Use it for "you have unsaved changes" prompts and
+  /// lists; [hasUnsavedChanges] is the cheap yes/no.
+  List<LazyTextFieldUnsavedChange> unsavedChanges() {
+    final changes = <Object, LazyTextFieldUnsavedChange>{
+      for (final MapEntry(:key, value: draft) in _drafts.drafts.entries)
+        if (draft.status != LazyTextFieldDraftStatus.saved)
+          key: LazyTextFieldUnsavedChange(
+            key: key,
+            value: draft.value,
+            baseText: draft.baseText,
+            draft: draft,
+          ),
+    };
+    for (final MapEntry(key: cellId, value: edit) in _openEdits.entries) {
+      final text = _controllers[cellId]?.text;
+      if (text == null) continue;
+      final draft = changes[edit.key]?.draft;
+      if (draft == null && text == edit.startText) continue;
+      changes[edit.key] = LazyTextFieldUnsavedChange(
+        key: edit.key,
+        value: text,
+        baseText: draft?.baseText ?? edit.baseText,
+        draft: draft,
+        cellId: cellId,
+      );
+    }
+    return List.unmodifiable(changes.values);
+  }
+
+  /// Whether anything is not saved yet (see [unsavedChanges]).
+  ///
+  /// Listeners are notified when an open editor's text first differs from
+  /// the text it opened with, and when it matches again; not on every
+  /// keystroke.
+  bool get hasUnsavedChanges =>
+      _openEdits.values.any((edit) => edit.changed) ||
+      _drafts.drafts.values.any(
+        (draft) => draft.status != LazyTextFieldDraftStatus.saved,
+      );
+
+  /// Writes the text of every changed open editor to [draftStore] now,
+  /// without closing the editors or saving anything; does nothing without a
+  /// store.
+  ///
+  /// After an app restart, [loadDrafts] brings the text back as a restored
+  /// draft. Call it when the app goes to the background, then await
+  /// [whenDraftsStored]:
+  ///
+  /// ```dart
+  /// if (state == AppLifecycleState.paused) {
+  ///   editController.storeOpenEdits();
+  ///   await editController.whenDraftsStored();
+  /// }
+  /// ```
+  ///
+  /// An editor whose text is back to what it opened with is removed from
+  /// the store again. When an editor closes, the store holds its draft, if
+  /// any, as before.
+  void storeOpenEdits() {
+    _storeOpenEditsTimer?.cancel();
+    _storeOpenEditsTimer = null;
+    if (draftStore == null) return;
+    for (final MapEntry(key: cellId, value: edit) in _openEdits.entries) {
+      final text = _controllers[cellId]?.text;
+      if (text != null && text != edit.startText) {
+        _drafts.storeOpen(edit.key, text, edit.baseText);
+      } else {
+        _drafts.unstoreOpen(edit.key);
+      }
+    }
+  }
+
+  void _trackOpenEdit(
+    String cellId,
+    TextEditingController controller,
+    Object key,
+    String initialValue,
+  ) {
+    final edit = _OpenEdit(
+      key: key,
+      startText: initialValue,
+      baseText: _drafts.draftFor(key)?.baseText ?? initialValue,
+    );
+    edit.listener = () => _openEditChanged(controller, edit);
+    controller.addListener(edit.listener!);
+    _openEdits[cellId] = edit;
+  }
+
+  void _openEditChanged(TextEditingController controller, _OpenEdit edit) {
+    final text = controller.text;
+    // Selection changes notify too; only text matters here.
+    if (text == edit.lastText) return;
+    edit.lastText = text;
+    final changed = text != edit.startText;
+    if (changed != edit.changed) {
+      edit.changed = changed;
+      // A controller's text can be set during a build (updateText).
+      if (SchedulerBinding.instance.schedulerPhase ==
+          SchedulerPhase.persistentCallbacks) {
+        _notifyAfterFrame();
+      } else {
+        notifyListeners();
+      }
+    }
+    final delay = storeOpenEditsAfter;
+    if (delay != null && draftStore != null && !_disposed) {
+      _storeOpenEditsTimer?.cancel();
+      _storeOpenEditsTimer = Timer(delay, storeOpenEdits);
+    }
+  }
 
   /// Keeps [value] as an [LazyTextFieldDraftStatus.unsaved] draft for [key],
   /// to be saved later by [saver].
@@ -435,6 +565,12 @@ class LazyTextFieldEditController extends ChangeNotifier {
     _keepHandlers.remove(cellId);
     final controller = _controllers.remove(cellId);
     final focusNode = _focusNodes.remove(cellId);
+    final edit = _openEdits.remove(cellId);
+    if (edit != null) {
+      controller?.removeListener(edit.listener!);
+      // The store holds the key's draft again, not the editor's text.
+      _drafts.unstoreOpen(edit.key);
+    }
     if (controller == null && focusNode == null) return;
 
     // Close the text input connection before the editor unmounts / disposes.
@@ -564,6 +700,11 @@ class LazyTextFieldEditController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _storeOpenEditsTimer?.cancel();
+    for (final MapEntry(key: cellId, value: edit) in _openEdits.entries) {
+      _controllers[cellId]?.removeListener(edit.listener!);
+    }
+    _openEdits.clear();
     _drafts.dispose();
     for (final controller in _controllers.values) {
       controller.dispose();
@@ -578,6 +719,22 @@ class LazyTextFieldEditController extends ChangeNotifier {
     _completeEditingDone();
     super.dispose();
   }
+}
+
+/// An open editor: the draft key it edits, and the text it opened with.
+class _OpenEdit {
+  _OpenEdit({
+    required this.key,
+    required this.startText,
+    required this.baseText,
+  }) : lastText = startText;
+
+  final Object key;
+  final String startText;
+  final String baseText;
+  String lastText;
+  bool changed = false;
+  VoidCallback? listener;
 }
 
 TextSelection _startEditSelectionFor({

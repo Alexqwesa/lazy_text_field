@@ -368,6 +368,9 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
       saveMode: _saveMode,
       saveOrder: _saveOrder,
       draftStore: _persistDrafts ? _draftStore : null,
+      // Text in an open editor reaches the store 1 s after the last
+      // keystroke, so it survives a crash too.
+      storeOpenEditsAfter: _persistDrafts ? const Duration(seconds: 1) : null,
       onSavesSettled: _onSavesSettled,
     );
   }
@@ -1154,6 +1157,7 @@ class _StatusBar extends StatelessWidget {
           counts.update(draft.status, (n) => n + 1, ifAbsent: () => 1);
         }
         int count(LazyTextFieldDraftStatus status) => counts[status] ?? 0;
+        final changes = controller.unsavedChanges();
         final style = Theme.of(context).textTheme.bodySmall;
         return Padding(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -1173,6 +1177,19 @@ class _StatusBar extends StatelessWidget {
                 '${count(LazyTextFieldDraftStatus.pending)} saving, '
                 '${count(LazyTextFieldDraftStatus.failed)} failed',
                 style: style,
+              ),
+              Tooltip(
+                message:
+                    'unsavedChanges(): every draft not saved yet, plus open '
+                    'editors whose text changed. Use it for "You have '
+                    'unsaved changes" prompts; hasUnsavedChanges is the '
+                    'yes/no.',
+                child: Text(
+                  'Not saved: ${changes.length} '
+                  '(${changes.where((change) => change.isEditing).length} '
+                  'in open editors)',
+                  style: style,
+                ),
               ),
               Text('In draft store: ${store.drafts.length}', style: style),
               Tooltip(
@@ -1375,7 +1392,8 @@ class _SettingsPanel extends StatelessWidget {
                 'Problem: unsaved and failed edits live only in memory, so '
                 'closing the app or a crash loses them.\n'
                 'A draft store (Hive, a file, ...) keeps them; loadDrafts() '
-                'brings them back.\n'
+                'brings them back. Text in an open editor is written 1 s '
+                'after the last keystroke (storeOpenEditsAfter).\n'
                 'Try: set Failing calls to All, edit a few cells, then '
                 'press "Restart" (or "Restart, data changed on server").',
             child: SwitchListTile(

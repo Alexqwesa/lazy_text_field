@@ -223,7 +223,7 @@ An `unsaved` draft is text that was kept but not saved:
 > and the app never calls `saveDrafts()` (for example the screen closes or the
 > app is killed), **the text is never saved**. It lives only in memory, unless
 > you set a `draftStore`. Call `saveDrafts()` before leaving the screen, or
-> check `drafts` for unsaved entries and ask the user.
+> check `unsavedChanges()` and ask the user.
 
 ```dart
 // Before leaving the screen: commits open editors, saves every unsaved and
@@ -231,11 +231,18 @@ An `unsaved` draft is text that was kept but not saved:
 final result = await editController.saveDrafts();
 if (!result.allSaved) showUnsavedChangesDialog(result.remaining);
 
-// Or show how many changes are waiting:
-final waiting = editController.drafts.values.where(
-  (d) => d.status == LazyTextFieldDraftStatus.unsaved,
-).length;
+// Or ask first. unsavedChanges() lists drafts that are not saved and open
+// editors whose text changed; hasUnsavedChanges is the yes/no.
+if (editController.hasUnsavedChanges) {
+  showUnsavedChangesDialog(editController.unsavedChanges().length);
+}
 ```
+
+Each `LazyTextFieldUnsavedChange` has the draft key, the text not saved yet
+(the editor's text while `isEditing`), the text before the change
+(`baseText`), and the `draft`, if any, with its status. Listeners of the
+controller are notified when an open editor's text first differs from the
+text it opened with, and when it matches again, not on every keystroke.
 
 #### Deferred mode: "Save all"
 
@@ -339,6 +346,27 @@ await editController.loadDrafts(); // at startup
 ```dart
 if (!await editController.whenDraftsStored()) {
   showError('Could not keep your unsaved changes on this device.');
+}
+```
+
+- **Text in an open editor is not a draft**, so by default it reaches the
+  store only when the editor closes; an app killed while the user types
+  loses it. `storeOpenEdits()` writes it now, without closing the editor or
+  saving anything, for example when the app goes to the background.
+  `storeOpenEditsAfter` does the same after a pause in typing. After a
+  restart, `loadDrafts()` brings the text back as a restored draft. When the
+  editor closes, the store holds its draft again, if any.
+
+```dart
+final editController = LazyTextFieldEditController(
+  draftStore: HiveDraftStore(box),
+  storeOpenEditsAfter: const Duration(seconds: 1),
+);
+
+// In a WidgetsBindingObserver:
+@override
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  if (state == AppLifecycleState.paused) editController.storeOpenEdits();
 }
 ```
 

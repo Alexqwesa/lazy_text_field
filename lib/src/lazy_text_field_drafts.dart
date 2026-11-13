@@ -205,6 +205,50 @@ class LazyTextFieldSaveDraftsResult {
       'skipped: $skipped, remaining: $remaining)';
 }
 
+/// Text that is not saved yet: a draft that is not saved, or an open editor
+/// whose text changed. See `LazyTextFieldEditController.unsavedChanges`.
+@immutable
+class LazyTextFieldUnsavedChange {
+  /// Creates an unsaved change.
+  const LazyTextFieldUnsavedChange({
+    required this.key,
+    required this.value,
+    required this.baseText,
+    this.draft,
+    this.cellId,
+  });
+
+  /// The draft key (`draftKey`, default `cellId`).
+  final Object key;
+
+  /// The text not saved yet: the open editor's text while [isEditing],
+  /// otherwise the draft's value.
+  final String value;
+
+  /// The text before the change: what the cell showed when the user started
+  /// changing it.
+  final String baseText;
+
+  /// The draft for [key], if any; null when the text is only in an open
+  /// editor. Its [LazyTextFieldDraft.status] says whether it is unsaved,
+  /// saving, or failed.
+  final LazyTextFieldDraft? draft;
+
+  /// The cell whose editor is open with this text, if any.
+  final String? cellId;
+
+  /// Whether the text is in an open editor (and may change further).
+  bool get isEditing => cellId != null;
+
+  /// The draft's status; null when the text is only in an open editor.
+  LazyTextFieldDraftStatus? get status => draft?.status;
+
+  @override
+  String toString() =>
+      'LazyTextFieldUnsavedChange($key, ${status?.name ?? 'editing'}'
+      '${isEditing && status != null ? ', editing' : ''})';
+}
+
 /// A draft as written to a [LazyTextFieldDraftStore].
 @immutable
 class LazyTextFieldStoredDraft {
@@ -332,6 +376,9 @@ class LazyTextFieldDraftQueue {
   final Map<String, Object> _storeErrors = <String, Object>{};
   // Kept drafts whose key is not a String, so the store cannot hold them.
   final Set<Object> _unstorable = <Object>{};
+  // Text of open editors written to the store (storeOpen); it wins over the
+  // key's draft until the editor closes.
+  final Map<Object, (String, String)> _openTexts = <Object, (String, String)>{};
   final List<Completer<void>> _settledWaiters = <Completer<void>>[];
   int _pendingSaves = 0;
   int _savedSinceSettle = 0;
@@ -761,14 +808,33 @@ class LazyTextFieldDraftQueue {
     return removed;
   }
 
+  /// Writes [value], the text of an open editor for [key], to the store, so
+  /// it comes back as a draft if the app is killed before the editor
+  /// closes. It is not a draft: nothing is saved. [unstoreOpen] puts the
+  /// store back in line with the key's draft.
+  void storeOpen(Object key, String value, String baseText) {
+    if (store == null) return;
+    _openTexts[key] = (value, baseText);
+    _persist(key, _drafts[key]);
+  }
+
+  /// Forgets the open editor text written by [storeOpen] for [key]; the
+  /// store then holds the key's draft, if any.
+  void unstoreOpen(Object key) {
+    if (_openTexts.remove(key) == null) return;
+    _persist(key, _drafts[key]);
+  }
+
   // Unsaved, pending, and failed drafts are written; saved or removed ones
   // are deleted. Pending drafts are written too: if the app stops mid-save,
-  // the text comes back as unsaved.
+  // the text comes back as unsaved. An open editor's stored text wins.
   void _persist(Object key, LazyTextFieldDraft? draft) {
     final store = this.store;
     if (store == null) return;
+    final open = _openTexts[key];
     final keep =
-        draft != null && draft.status != LazyTextFieldDraftStatus.saved;
+        open != null ||
+        (draft != null && draft.status != LazyTextFieldDraftStatus.saved);
     if (key is! String) {
       // Cannot be stored. Reported once per draft, in release builds too,
       // and whenStored() stays false while the draft is kept.
@@ -794,8 +860,8 @@ class LazyTextFieldDraftQueue {
     if (keep) {
       final record = LazyTextFieldStoredDraft(
         key: key,
-        value: draft.value,
-        baseText: draft.baseText,
+        value: open?.$1 ?? draft!.value,
+        baseText: open?.$2 ?? draft!.baseText,
       );
       if (_stored[key] == record && !unknown) return;
       _stored[key] = record;

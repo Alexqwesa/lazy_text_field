@@ -27,6 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     as an unsaved draft, so `saveDrafts(batch: ...)` sends it in the batch.
 - `LazyTextFieldDraft.restored`: the draft came from `loadDrafts()` and
   nobody has committed it since.
+- Unsaved changes in one place: `unsavedChanges()` lists drafts that are
+  not saved and open editors whose text changed (`LazyTextFieldUnsavedChange`);
+  `hasUnsavedChanges` is the yes/no. Listeners are notified when an open
+  editor's text first differs from the text it opened with, and when it
+  matches again, not on every keystroke.
+- Open editors in the draft store: `storeOpenEdits()` writes the text of
+  open editors to the `draftStore` without closing them or saving anything,
+  for example when the app goes to the background; `storeOpenEditsAfter`
+  does it after a pause in typing. `loadDrafts()` brings the text back as a
+  restored draft after a restart.
 
 ### Fixed
 

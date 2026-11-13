@@ -54,7 +54,10 @@ startup, and await `whenDraftsStored()` (false if writes keep failing) before
 telling the user their changes are kept. Restored drafts
 (`draft.restored`) are saved only when the user commits them from their cell
 or by `saveDrafts()`, never by a cell switch; check them against the server
-(`draft.baseText`) before offering to save.
+(`draft.baseText`) before offering to save. Open editors are not drafts: use
+`unsavedChanges()` / `hasUnsavedChanges` for "unsaved changes" prompts, and
+`storeOpenEdits()` (on app pause) or `storeOpenEditsAfter` so typed text
+survives the app being killed.
 
 In `onEditingExtraHeightChanged`, check `mounted` before `setState`: the final
 0 can arrive after the consumer was disposed.
