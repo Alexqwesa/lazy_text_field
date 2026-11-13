@@ -532,20 +532,32 @@ void main() {
       expect(controller.draftFor('a')!.value, 'newer');
     });
 
-    test('a store needs String draft keys', () {
-      final controller = LazyTextFieldEditController(
-        draftStore: LazyTextFieldMemoryDraftStore(),
-      );
+    test('a non-String key is reported and kept in memory only', () async {
+      final store = LazyTextFieldMemoryDraftStore();
+      final controller = LazyTextFieldEditController(draftStore: store);
       addTearDown(controller.dispose);
-      expect(
-        () => controller.holdDraft(
-          key: 1,
-          source: 'old',
-          value: 'new',
-          saver: (_) async => true,
-        ),
-        throwsAssertionError,
+      final errors = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = previous);
+
+      void hold(String value) => controller.holdDraft(
+        key: 1,
+        source: 'old',
+        value: value,
+        saver: (_) async => true,
       );
+      hold('new');
+      hold('newer');
+
+      expect(errors, hasLength(1));
+      expect(errors.single.exception, isArgumentError);
+      expect(store.drafts, isEmpty);
+      expect(controller.draftFor(1)!.value, 'newer');
+      expect(await controller.whenDraftsStored(), isFalse);
+
+      controller.clearDraft(1);
+      expect(await controller.whenDraftsStored(), isTrue);
     });
 
     testWidgets('failed writes are tracked and retried by whenDraftsStored', (

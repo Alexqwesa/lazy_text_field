@@ -310,13 +310,21 @@ await editController.loadDrafts(); // at startup
 
 - **Draft keys must be `String`s that are unique within the store and stable
   across restarts** (`draftKey`, default `cellId`). Include the table or
-  screen name, for example `'orders/42/name'`. Debug builds assert on
-  non-`String` keys.
+  screen name, for example `'orders/42/name'`. A draft with another key is
+  reported to `FlutterError` and kept in memory only, and
+  `whenDraftsStored()` returns false while it exists.
 - Restored drafts come back as `unsaved`, also those that were saving when
   the app stopped, so they may be sent again. Make the save idempotent.
 - A restored draft is shown, and gets its saver, when its cell is built.
   `saveDrafts()` skips restored drafts whose cell has not been built yet;
   `saveDrafts(batch: ...)` includes them.
+- **Restored drafts are not saved on their own.** Unlike text kept in this
+  session, they are not saved when another cell starts editing: the user
+  has not seen them yet, and the server value may have changed while the
+  app was closed. They are saved when the user commits one from its cell,
+  or by `saveDrafts()`. `draft.restored` tells them apart, for example to
+  mark them in the cell or compare `draft.baseText` with the server value
+  first.
 - Failure errors are not stored.
 - Store calls run one at a time, in the order the drafts changed: a `delete`
   starts only after the earlier `put` finished, so a deleted draft cannot

@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     asynchronous wait that no other cell started editing meanwhile.
   - `setKeepHandler()` / `removeKeepHandler()`: keep an open editor's text
     as an unsaved draft, so `saveDrafts(batch: ...)` sends it in the batch.
+- `LazyTextFieldDraft.restored`: the draft came from `loadDrafts()` and
+  nobody has committed it since.
 
 ### Fixed
 
@@ -40,6 +42,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `saveDrafts(batch: ...)` saved open editors through each cell's own
   `onCommit` / `onSave`, in addition to the batch. Their text now goes out
   in the batch.
+- **Drafts restored by `loadDrafts()` were saved without review**: in
+  `immediate` mode, once its cell was built, a restored draft was saved as
+  soon as the user started editing any other cell, overwriting the server
+  value even if it had changed while the app was closed. Restored drafts are
+  now saved only when the user commits one from its cell, or by
+  `saveDrafts()`.
+- With a `draftStore`, a non-`String` draft key failed an assert in debug
+  builds and was skipped silently in release. It is now reported to
+  `FlutterError` in every build, the draft stays in memory only, and
+  `whenDraftsStored()` returns false while it exists.
 
 ### Changed
 
@@ -48,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Escape with a modifier no longer cancels.
 
 
-## [3.0.0] - 2026-11-11
+## [3.0.0-dev unreleased] - 2026-11-11
 
 Most of this release is about saving with `ScopedLazyTextField` and
 `LazyTextFieldEditController`: text in a closed editor is no longer dropped,

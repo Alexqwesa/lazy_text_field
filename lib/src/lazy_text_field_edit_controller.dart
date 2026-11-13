@@ -49,7 +49,9 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// app restart (for example a Hive box); null keeps them in memory only.
   ///
   /// Requires [String] draft keys that are unique within the store and
-  /// stable across restarts. Call [loadDrafts] at startup to restore them.
+  /// stable across restarts; a draft with another key is reported to
+  /// [FlutterError], kept in memory only, and makes [whenDraftsStored]
+  /// return false. Call [loadDrafts] at startup to restore them.
   final LazyTextFieldDraftStore? draftStore;
 
   /// Called each time the save queue becomes empty, for example to refresh
@@ -161,7 +163,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// before this one starts editing. Their text goes to their commit handlers
   /// first, and in [LazyTextFieldSaveMode.immediate] unsaved drafts are
   /// saved, except the one for [draftKey] (default [cellId]), which this
-  /// editor continues.
+  /// editor continues, and restored ones ([LazyTextFieldDraft.restored]).
   TextEditingController startEditing({
     required String cellId,
     required String initialValue,
@@ -183,6 +185,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     }
     if (saveMode == LazyTextFieldSaveMode.immediate) {
       // The user moved on: text kept from cells that left the tree is saved.
+      // Restored drafts are not: nobody has committed them yet.
       _drafts.flushUnsaved(except: draftKey ?? cellId);
     }
 
@@ -299,7 +302,10 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// were restored. Drafts already in memory win.
   ///
   /// Call it once at startup. Cells show restored drafts, and register how to
-  /// save them, when they are built.
+  /// save them, when they are built. Restored drafts
+  /// ([LazyTextFieldDraft.restored]) are not saved when another cell starts
+  /// editing: only when the user commits one from its cell, or by
+  /// [saveDrafts].
   Future<int> loadDrafts() => _drafts.load();
 
   /// Number of saves queued or running (`onCommit` and `onSave`).

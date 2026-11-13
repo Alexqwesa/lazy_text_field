@@ -114,6 +114,7 @@ class LazyTextFieldDraft {
     required this.status,
     required Set<String> staleSources,
     this.error,
+    this.restored = false,
   }) : _staleSources = staleSources;
 
   /// The kept text.
@@ -130,6 +131,16 @@ class LazyTextFieldDraft {
   /// what the commit threw, or null when `onSave` returned false.
   final Object? error;
 
+  /// Whether this draft came from `LazyTextFieldEditController.loadDrafts`
+  /// and nobody has committed it since.
+  ///
+  /// A restored draft is not saved when another cell starts editing: the
+  /// user has not seen it yet, and the server value may have changed while
+  /// the app was closed. It is saved when the user commits it from its cell
+  /// or by `saveDrafts()`. Keeping it unchanged (its cell left the tree)
+  /// leaves it restored.
+  final bool restored;
+
   // Source texts that predate this draft. A saved draft stays visible while
   // the source still shows one of them (the refresh has not arrived yet).
   final Set<String> _staleSources;
@@ -143,11 +154,13 @@ class LazyTextFieldDraft {
     status: status,
     staleSources: _staleSources,
     error: error,
+    restored: restored && status == LazyTextFieldDraftStatus.unsaved,
   );
 
   @override
   String toString() =>
       'LazyTextFieldDraft($status, ${value.length} chars'
+      '${restored ? ', restored' : ''}'
       '${error == null ? '' : ', error: $error'})';
 }
 
@@ -317,6 +330,8 @@ class LazyTextFieldDraftQueue {
   // Store writes run one at a time, in order.
   Future<void> _storeTail = Future<void>.value();
   final Map<String, Object> _storeErrors = <String, Object>{};
+  // Kept drafts whose key is not a String, so the store cannot hold them.
+  final Set<Object> _unstorable = <Object>{};
   final List<Completer<void>> _settledWaiters = <Completer<void>>[];
   int _pendingSaves = 0;
   int _savedSinceSettle = 0;
@@ -387,12 +402,14 @@ class LazyTextFieldDraftQueue {
   }
 
   /// Saves the unsaved drafts that have a saver, except the one for
-  /// [except] (it is being edited again).
+  /// [except] (it is being edited again) and restored ones (nobody has
+  /// committed them yet; see [LazyTextFieldDraft.restored]).
   void flushUnsaved({Object? except}) {
     final targets = <Object, LazyTextFieldDraft>{
       for (final entry in _drafts.entries)
         if (entry.key != except &&
             entry.value.status == LazyTextFieldDraftStatus.unsaved &&
+            !entry.value.restored &&
             _savers.containsKey(entry.key))
           entry.key: entry.value,
     };
@@ -695,6 +712,7 @@ class LazyTextFieldDraftQueue {
         baseText: record.baseText,
         status: LazyTextFieldDraftStatus.unsaved,
         staleSources: {record.baseText}..remove(record.value),
+        restored: true,
       );
       restored++;
     }
@@ -719,6 +737,12 @@ class LazyTextFieldDraftQueue {
       baseText: previous?.baseText ?? source,
       status: status,
       staleSources: stale,
+      // Kept again unchanged (its cell left the tree): still not committed.
+      restored:
+          status == LazyTextFieldDraftStatus.unsaved &&
+          previous != null &&
+          previous.restored &&
+          previous.value == value,
     );
     _set(key, draft);
     return draft;
@@ -743,14 +767,28 @@ class LazyTextFieldDraftQueue {
   void _persist(Object key, LazyTextFieldDraft? draft) {
     final store = this.store;
     if (store == null) return;
-    assert(
-      key is String,
-      'A LazyTextFieldDraftStore needs String draft keys, unique within the '
-      'store and stable across restarts; got ${key.runtimeType}.',
-    );
-    if (key is! String) return;
     final keep =
         draft != null && draft.status != LazyTextFieldDraftStatus.saved;
+    if (key is! String) {
+      // Cannot be stored. Reported once per draft, in release builds too,
+      // and whenStored() stays false while the draft is kept.
+      if (!keep) {
+        _unstorable.remove(key);
+      } else if (_unstorable.add(key)) {
+        _report(
+          ArgumentError.value(
+            key,
+            'draftKey',
+            'A LazyTextFieldDraftStore needs String draft keys, unique within '
+                'the store and stable across restarts; got ${key.runtimeType}. '
+                'This draft is kept in memory only',
+          ),
+          StackTrace.current,
+          'while writing a LazyTextFieldDraftStore',
+        );
+      }
+      return;
+    }
     // After a failed write the stored state is unknown: always write again.
     final unknown = _storeErrors.containsKey(key);
     if (keep) {
@@ -789,7 +827,7 @@ class LazyTextFieldDraftQueue {
   Future<bool> whenStored() async {
     if (store == null) return true;
     await _storeTail;
-    if (_storeErrors.isEmpty) return true;
+    if (_storeErrors.isEmpty) return _unstorable.isEmpty;
     if (!_disposed) {
       // Rewrite each failed key from its current state.
       for (final key in List.of(_storeErrors.keys)) {
@@ -797,7 +835,7 @@ class LazyTextFieldDraftQueue {
       }
       await _storeTail;
     }
-    return _storeErrors.isEmpty;
+    return _storeErrors.isEmpty && _unstorable.isEmpty;
   }
 
   void _report(Object error, StackTrace stack, String context) {

@@ -911,7 +911,9 @@ class _Toolbar extends StatelessWidget {
                 'controller and fresh data, so everything in memory is '
                 'gone.\n'
                 'With "Draft store" on, unsaved and failed edits come back '
-                '(loadDrafts) over the unchanged server data.',
+                '(loadDrafts) over the unchanged server data. They are not '
+                'saved until you commit one from its cell or press "Save '
+                'all": editing another cell does not send them.',
             child: OutlinedButton.icon(
               onPressed: busy
                   ? null
