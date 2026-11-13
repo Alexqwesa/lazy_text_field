@@ -13,9 +13,10 @@ typedef LazyTextFieldCommitHandler = void Function(String text);
 /// cells, and the drafts and background save queue used by
 /// [ScopedLazyTextField.onCommit].
 ///
-/// While a draft is pending or failed, its cell shows the draft instead of
-/// its source `text`. A saved draft is shown until the source text changes
-/// (the refreshed value arrives). Drafts cost nothing until a cell commits.
+/// While a draft is unsaved, pending, or failed, its cell shows the draft
+/// instead of its source `text`. A saved draft is shown until the source
+/// text changes (the refreshed value arrives); a conflict is not shown.
+/// Drafts cost nothing until a cell commits.
 class LazyTextFieldEditController extends ChangeNotifier {
   /// Creates an edit controller.
   ///
@@ -263,12 +264,15 @@ class LazyTextFieldEditController extends ChangeNotifier {
   Map<Object, LazyTextFieldDraft> get drafts => _drafts.drafts;
 
   /// Everything not saved yet, one entry per draft key: drafts that are
-  /// unsaved, saving, or failed, and open editors whose text differs from
-  /// the text they opened with.
+  /// unsaved, saving, failed, or conflicting, and open editors whose text
+  /// differs from the text they opened with.
   ///
   /// For an open editor that continues a draft, the entry has the editor's
-  /// text and the draft. Use it for "you have unsaved changes" prompts and
-  /// lists; [hasUnsavedChanges] is the cheap yes/no.
+  /// text and the draft. An editor opened over a conflict starts from the
+  /// record's text; once its text changes, its entry replaces the
+  /// conflict's (with the conflicting draft as [LazyTextFieldUnsavedChange.draft]).
+  /// Use it for "you have unsaved changes" prompts and lists;
+  /// [hasUnsavedChanges] is the cheap yes/no.
   List<LazyTextFieldUnsavedChange> unsavedChanges() {
     final changes = <Object, LazyTextFieldUnsavedChange>{
       for (final MapEntry(:key, value: draft) in _drafts.drafts.entries)
@@ -285,12 +289,18 @@ class LazyTextFieldEditController extends ChangeNotifier {
       final text = _controllers[cellId]?.text;
       if (text == null) continue;
       final draft = changes[edit.key]?.draft;
-      if (draft == null && text == edit.startText) continue;
+      // An editor over a conflict does not continue the conflicting draft.
+      final continued = draft?.status == LazyTextFieldDraftStatus.conflict
+          ? null
+          : draft;
+      if (continued == null && text == edit.startText) continue;
       changes[edit.key] = LazyTextFieldUnsavedChange(
         key: edit.key,
         value: text,
-        baseText: draft?.baseText ?? edit.baseText,
-        baseVersion: draft != null ? draft.baseVersion : edit.baseVersion,
+        baseText: continued?.baseText ?? edit.baseText,
+        baseVersion: continued != null
+            ? continued.baseVersion
+            : edit.baseVersion,
         draft: draft,
         cellId: cellId,
       );
@@ -348,8 +358,12 @@ class LazyTextFieldEditController extends ChangeNotifier {
     String initialValue,
     String? version,
   ) {
-    // An editor that continues a draft starts from the draft's base.
-    final draft = _drafts.draftFor(key);
+    // An editor that continues a draft starts from the draft's base; one
+    // over a conflict starts from the record's text, which it shows.
+    final kept = _drafts.draftFor(key);
+    final draft = kept?.status == LazyTextFieldDraftStatus.conflict
+        ? null
+        : kept;
     final edit = _OpenEdit(
       key: key,
       startText: initialValue,
@@ -426,10 +440,16 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// [LazyTextFieldDraftStatus.failed] draft, for example from a "Save all"
   /// button or before leaving a screen.
   ///
+  /// Conflicts and restored drafts not compared with their record yet
+  /// ([LazyTextFieldDraft.verified]) are left out and counted in the result:
+  /// call [reconcileDrafts] first for restored drafts whose rows are not on
+  /// screen.
+  ///
   /// Without [batch], each draft is saved by its own cell's `onCommit`
-  /// (through the save queue) or `onSave`. Drafts without a known saver (loaded
-  /// from [draftStore] and not shown since) are skipped. With [batch], all of
-  /// them are sent in one call; see [LazyTextFieldBatchCommit].
+  /// (through the save queue) or `onSave`. Drafts without a known saver
+  /// (restored, verified by [reconcileDrafts], and not shown since) are
+  /// skipped. With [batch], all of them are sent in one call; see
+  /// [LazyTextFieldBatchCommit].
   ///
   /// With [includeOpenEdits] (default), open editors are included and close.
   /// Without [batch] they are committed first ([commitAll]). With [batch]
@@ -458,11 +478,23 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// [LazyTextFieldDraftId]; returns how many were restored. Drafts already
   /// in memory win.
   ///
-  /// Call it once at startup. A cell shows a restored draft, and registers
-  /// how to save it, when it is built with the same draft id. Restored
-  /// drafts ([LazyTextFieldDraft.restored]) are not saved when another cell
-  /// starts editing: only when the user commits one from its cell, or by
-  /// [saveDrafts].
+  /// Call it once at startup. The record may have changed while the app was
+  /// closed, so a restored draft ([LazyTextFieldDraft.restored]) is first
+  /// compared with it: when a cell with the same draft id builds, with the
+  /// cell's `text` and `version`, or by [reconcileDrafts]:
+  ///
+  /// - The record already has the draft's text: the draft is dropped.
+  /// - The field's text is the one the draft started from, or the version
+  ///   is: the cell shows the draft. Its base becomes the record's current
+  ///   text and version (another field of the row may have changed the
+  ///   version).
+  /// - Otherwise the field changed meanwhile: the draft becomes a
+  ///   [LazyTextFieldDraftStatus.conflict], and the cell shows the record's
+  ///   text. See [rebaseDraft].
+  ///
+  /// Restored drafts are not saved when another cell starts editing: only
+  /// when the user commits one from its cell, or by [saveDrafts] once
+  /// compared.
   ///
   /// When several controllers share one store (one per table or screen),
   /// pass [where] so each loads only its own drafts:
@@ -473,6 +505,43 @@ class LazyTextFieldEditController extends ChangeNotifier {
   Future<int> loadDrafts({bool Function(LazyTextFieldDraftId id)? where}) =>
       _drafts.load(where: where);
 
+  /// Compares restored drafts with what their records hold now, for rows
+  /// that are not on screen (a cell compares its own draft when it builds);
+  /// see [loadDrafts] for the rules. Other drafts are left alone.
+  ///
+  /// [values] maps draft keys to the field's current text and version; null
+  /// means the record was deleted, which makes the draft a conflict
+  /// ([LazyTextFieldConflict.isDeleted]) kept for export or discard. Call
+  /// it after [loadDrafts], before [saveDrafts]:
+  ///
+  /// ```dart
+  /// await controller.loadDrafts();
+  /// final ids = controller.drafts.keys.whereType<LazyTextFieldDraftId>();
+  /// final tasks = await api.fetchTasks([for (final id in ids) id.row]);
+  /// controller.reconcileDrafts({
+  ///   for (final id in ids)
+  ///     id: switch (tasks[id.row]) {
+  ///       null => null,
+  ///       final task => LazyTextFieldServerValue(
+  ///         task.valueOf(id.field),
+  ///         version: task.updatedAt.toIso8601String(),
+  ///       ),
+  ///     },
+  /// });
+  /// ```
+  void reconcileDrafts(Map<Object, LazyTextFieldServerValue?> values) =>
+      _drafts.reconcile(values);
+
+  /// Resolves the conflict for [key] in favor of the draft: it becomes an
+  /// unsaved draft on top of the record's current text and version
+  /// ([LazyTextFieldDraft.conflict]), without saving. Its cell shows it
+  /// again; it is saved when committed from its cell or by [saveDrafts].
+  ///
+  /// Returns false, and changes nothing, if [key] has no conflict or its
+  /// record was deleted. To keep the record's text instead, call
+  /// [clearDraft].
+  bool rebaseDraft(Object key) => _drafts.rebase(key);
+
   /// Number of saves queued or running (`onCommit` and `onSave`).
   int get pendingSaves => _drafts.pendingSaves;
 
@@ -482,12 +551,26 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// The draft for [key], if any.
   LazyTextFieldDraft? draftFor(Object key) => _drafts.draftFor(key);
 
-  /// Text a cell should display for [key] when its source text is [source].
+  /// Text a cell should display for [key] when its source text is [source],
+  /// from the record at [version].
   ///
   /// Drops a saved draft once [source] no longer matches a text that
-  /// predates it.
-  String displayText(Object key, String source) =>
-      _drafts.displayText(key, source);
+  /// predates it. Compares a restored draft with [source] and [version]
+  /// (see [loadDrafts]); for a conflict, returns [source]. Pass the same
+  /// [version] the cell passes to [startEditing]. Safe to call during a
+  /// build: listeners are notified of changes after the frame.
+  String displayText(Object key, String source, {String? version}) {
+    final before = _drafts.draftFor(key);
+    final text = _drafts.displayText(key, source, version: version);
+    // Dropping a saved draft needs no notify: listeners already show the
+    // source. A restored draft that was compared changed state.
+    if (before != null &&
+        before.restored &&
+        !identical(before, _drafts.draftFor(key))) {
+      _notifyAfterFrame();
+    }
+    return text;
+  }
 
   /// Forgets the draft for [key]. A save that is still running continues,
   /// but its result is no longer shown.

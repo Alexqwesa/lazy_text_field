@@ -335,21 +335,15 @@ void main() {
   testWidgets('unsaved changes carry the version they started from', (
     tester,
   ) async {
-    final store = LazyTextFieldMemoryDraftStore()
-      ..put(
-        LazyTextFieldStoredDraft(
-          id: _id(1),
-          value: 'restored-1',
-          baseText: 'server-a',
-          baseVersion: 'v1',
-        ),
-      );
-    final controller = newController(
-      saveMode: LazyTextFieldSaveMode.immediate,
-      store: store,
+    final controller = newController(saveMode: LazyTextFieldSaveMode.deferred);
+    // Kept at v1; the records changed since: both are at v2 now.
+    controller.holdDraft(
+      key: _id(1),
+      source: 'server-a',
+      value: 'kept-1',
+      version: 'v1',
+      saver: (_) async => true,
     );
-    await controller.loadDrafts();
-    // The records changed on the server since: both are at v2 now.
     await pumpTable(tester, controller, [
       row(1, [cell('a')], version: 'v2'),
       row(2, [cell('b')], version: 'v2'),
@@ -362,7 +356,7 @@ void main() {
     expect(changes[_id(1)]!.baseVersion, 'v1');
     expect(changes[_id(2)]!.baseVersion, 'v2');
 
-    // An editor that continues the restored draft keeps the draft's base.
+    // An editor that continues the draft keeps the draft's base.
     await edit(tester, 'a', 'checked-a');
     changes = {
       for (final change in controller.unsavedChanges()) change.key: change,

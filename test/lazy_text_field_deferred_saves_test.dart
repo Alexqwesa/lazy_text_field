@@ -517,8 +517,8 @@ void main() {
       expect(store.drafts, isEmpty);
     });
 
-    testWidgets('restored drafts without a cell are skipped, batches save '
-        'them', (tester) async {
+    testWidgets('restored drafts without a cell are skipped once verified, '
+        'batches save them', (tester) async {
       final store = LazyTextFieldMemoryDraftStore()
         ..put(
           LazyTextFieldStoredDraft(
@@ -530,6 +530,9 @@ void main() {
         );
       final controller = newController(store: store);
       await controller.loadDrafts();
+      controller.reconcileDrafts({
+        _id('gone'): const LazyTextFieldServerValue('old', version: 'v1'),
+      });
 
       var result = await controller.saveDrafts();
       expect(result.skipped, 1);

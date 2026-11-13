@@ -277,11 +277,13 @@ await editController.saveDrafts(
   text of open editors goes out in the batch too, not through each cell's
   own save. It also waits for saves that were already queued or running,
   including `onSave` submits.
-- The result counts what this call sent (`saved`, `failed`, `skipped`) and
-  what is still not saved when it returns (`remaining`): failures, drafts
-  without a saver, earlier saves that failed, and **text changed again while
-  saving**. `allSaved` is true only when `failed` and `remaining` are 0, so
-  it never claims success while a newer change is waiting.
+- The result counts what this call sent (`saved`, `failed`, `skipped`), what
+  it left out on purpose (`conflicts`, `unverified`: restored drafts, see
+  below), and what is still not saved when it returns (`remaining`):
+  failures, drafts without a saver, conflicts, earlier saves that failed,
+  and **text changed again while saving**. `allSaved` is true only when
+  `failed` and `remaining` are 0, so it never claims success while a newer
+  change is waiting.
 - Each saved draft calls its cell's `onSaved`, even if the cell left the
   tree. A `batch` does not call `onSaved`; use its result or
   `onSavesSettled`.
@@ -295,7 +297,8 @@ await editController.saveDrafts(
 #### Keeping drafts across restarts (Hive, etc.)
 
 Give the controller a `LazyTextFieldDraftStore`. It writes `unsaved`,
-`pending`, and `failed` drafts, and deletes them once saved or discarded:
+`pending`, `failed`, and `conflict` drafts, and deletes them once saved or
+discarded:
 
 ```dart
 class HiveDraftStore implements LazyTextFieldDraftStore {
@@ -384,16 +387,11 @@ LazyTextFieldScope(
   `loadDrafts(where: (id) => id.table == 'orders')`.
 - Restored drafts come back as `unsaved`, also those that were saving when
   the app stopped, so they may be sent again. Make the save idempotent.
-- A restored draft is shown, and gets its saver, when its cell is built.
-  `saveDrafts()` skips restored drafts whose cell has not been built yet;
-  `saveDrafts(batch: ...)` includes them.
 - **Restored drafts are not saved on their own.** Unlike text kept in this
   session, they are not saved when another cell starts editing: the user
-  has not seen them yet, and the server value may have changed while the
-  app was closed. They are saved when the user commits one from its cell,
-  or by `saveDrafts()`. `draft.restored` tells them apart, for example to
-  mark them in the cell or compare `draft.baseVersion` (or `baseText`) with
-  the record on the server first.
+  has not seen them yet. They are saved when the user commits one from its
+  cell, or by `saveDrafts()` once checked (below). `draft.restored` tells
+  them apart.
 - Failure errors are not stored.
 - Store calls run one at a time, in the order the drafts changed: a `delete`
   starts only after the earlier `put` finished, so a deleted draft cannot
@@ -431,6 +429,55 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
   if (state == AppLifecycleState.paused) editController.storeOpenEdits();
 }
 ```
+
+#### Checking restored drafts against the server
+
+While the app was closed, someone may have changed the record. A restored
+draft is therefore compared with it before it is shown or saved: when a cell
+with its draft id builds (with the cell's `text` and `version`), or by
+`reconcileDrafts()` for rows that are not on screen.
+
+| The record now                                                       | The draft                                                                                                                       |
+|----------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| Has the draft's text                                                 | Dropped: already applied.                                                                                                       |
+| Same field text as the draft started from, or the same version       | Shown in the cell, with the record's current text and version as its new base (another field of the row may have changed the version). |
+| Field text changed, and a different version                          | `LazyTextFieldDraftStatus.conflict`: the cell shows the record's text; the draft is kept.                                       |
+| Deleted (`null` in `reconcileDrafts`)                                | A conflict with `draft.conflict!.isDeleted`.                                                                                    |
+
+`saveDrafts()`, its batch, and switching cells never save a conflict or a
+restored draft that was not checked yet (`draft.verified` is false); the
+result counts them in `conflicts` and `unverified`. Check the rows that are
+not on screen right after loading:
+
+```dart
+await editController.loadDrafts();
+final ids = editController.drafts.keys.whereType<LazyTextFieldDraftId>();
+final orders = await api.fetchOrders([for (final id in ids) id.row]);
+editController.reconcileDrafts({
+  for (final id in ids)
+    id: switch (orders[id.row]) {
+      null => null, // the record was deleted
+      final order => LazyTextFieldServerValue(
+        order.valueOf(id.field),
+        version: order.updatedAt.toIso8601String(),
+      ),
+    },
+});
+```
+
+Resolve a conflict with the user, for example from a cell badge
+(`draft.status == LazyTextFieldDraftStatus.conflict`):
+
+- `rebaseDraft(key)`: keep the user's text, on top of the record's current
+  text and version (`draft.conflict!.serverText`). It is shown again and saved
+  on the next commit or `saveDrafts()`.
+- `clearDraft(key)`: keep the record's text.
+- Committing a new value from the cell also replaces the conflict; the new
+  draft starts from the record's current text and version.
+
+Only restored drafts are checked: text kept in this session is shown and
+saved as typed. To catch a record changed by someone else while this session
+had it open, check the version on the server when saving.
 
 ### Refreshing data around edits
 

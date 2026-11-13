@@ -465,6 +465,7 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
             result.allSaved
                 ? 'Everything is saved (${result.saved} drafts).'
                 : '${result.saved} saved, ${result.failed} failed, '
+                      '${result.conflicts} conflicts, '
                       '${result.remaining} left to save.',
           ),
         ),
@@ -504,12 +505,33 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
     old.dispose();
     final restored = await _controller.loadDrafts();
     if (!mounted) return;
+    // Rows that are not on screen: compare their drafts with the fresh data
+    // now (cells on screen do it when they build), so "Save all" can send
+    // the ones that are still valid.
+    _controller.reconcileDrafts({
+      for (final id
+          in _controller.drafts.keys.whereType<LazyTextFieldDraftId>())
+        id: _serverValueOf(id),
+    });
     setState(() => _restarting = false);
     _log.add(
       _persistDrafts
           ? '$reason: new controller, $restored drafts loaded from the store'
           : '$reason: new controller, $kept drafts were only in memory and '
                 'are lost',
+    );
+  }
+
+  /// The server's current value of the field [id] names; null if its row
+  /// is gone.
+  LazyTextFieldServerValue? _serverValueOf(LazyTextFieldDraftId id) {
+    final (rowId, field) = parseDraftId(id);
+    final index = _indexById[rowId];
+    if (index == null) return null;
+    final row = _rows[index];
+    return LazyTextFieldServerValue(
+      row.valueOf(field),
+      version: '${row.version}',
     );
   }
 
@@ -765,7 +787,7 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
               },
             ),
           ),
-          _DraftBadge(draftKey: draftId, source: row.valueOf(field)),
+          _DraftBadge(draftKey: draftId),
         ],
       ),
     );
@@ -804,43 +826,27 @@ String _short(String text) {
   return line.length <= 60 ? line : '${line.substring(0, 60)}…';
 }
 
-/// Shows the save state of one cell's draft.
+/// Shows the save state of one cell's draft. Tap a conflict to resolve it.
 class _DraftBadge extends StatelessWidget {
-  const _DraftBadge({required this.draftKey, required this.source});
+  const _DraftBadge({required this.draftKey});
 
   final LazyTextFieldDraftId draftKey;
 
-  /// The cell's current value from the server.
-  final String source;
-
   @override
   Widget build(BuildContext context) {
-    final draft = LazyTextFieldScope.maybeOf(context)?.draftFor(draftKey);
+    final controller = LazyTextFieldScope.maybeOf(context);
+    final draft = controller?.draftFor(draftKey);
     final colors = Theme.of(context).colorScheme;
-    // baseText is the value the user started from. If the server value
-    // changed since, saving the draft overwrites someone else's change.
-    final conflict =
-        draft != null &&
-        (draft.status == LazyTextFieldDraftStatus.unsaved ||
-            draft.status == LazyTextFieldDraftStatus.failed) &&
-        draft.baseText != source;
     final (icon, color, tooltip) = switch (draft?.status) {
-      _ when conflict => (
-        Icons.warning_amber,
-        colors.error,
-        'Changed on the server after you edited it.\n'
-            'Server now: "${_short(source)}"\n'
-            'Your text: "${_short(draft.value)}"\n'
-            'Saving overwrites the server value. To keep it instead, open '
-            'the cell and press Escape.\n'
-            '(The demo compares draft.baseText with the server value.)',
-      ),
       null => (null, null, ''),
       LazyTextFieldDraftStatus.unsaved => (
         Icons.edit_note,
         colors.tertiary,
-        'Unsaved: not sent yet. "Save all" saves it, and so does editing '
-            'another cell in immediate mode.',
+        draft!.restored
+            ? 'Restored after the restart, checked against the server: '
+                  'not sent yet. Commit it from the cell or press "Save all".'
+            : 'Unsaved: not sent yet. "Save all" saves it, and so does '
+                  'editing another cell in immediate mode.',
       ),
       LazyTextFieldDraftStatus.pending => (
         Icons.cloud_upload_outlined,
@@ -858,17 +864,75 @@ class _DraftBadge extends StatelessWidget {
         'Failed: ${draft?.error ?? 'onSave returned false'}. '
             'Reopen to retry, Escape to discard.',
       ),
+      LazyTextFieldDraftStatus.conflict => (
+        Icons.warning_amber,
+        colors.error,
+        'Changed on the server after you edited it: the cell shows the '
+            'server value, your text is kept. Tap to choose.',
+      ),
     };
+    final badge = icon == null
+        ? null
+        : Tooltip(
+            message: tooltip,
+            child: Icon(icon, size: 18, color: color),
+          );
     return SizedBox(
       width: 28,
       height: 36,
-      child: icon == null
-          ? null
-          : Tooltip(
-              message: tooltip,
-              child: Icon(icon, size: 18, color: color),
-            ),
+      child: draft?.status == LazyTextFieldDraftStatus.conflict
+          ? InkWell(
+              onTap: () => unawaited(
+                _resolveConflict(context, controller!, draftKey, draft!),
+              ),
+              child: badge,
+            )
+          : badge,
     );
+  }
+}
+
+/// Asks whether to keep the user's text or the server's for a conflict.
+Future<void> _resolveConflict(
+  BuildContext context,
+  LazyTextFieldEditController controller,
+  LazyTextFieldDraftId key,
+  LazyTextFieldDraft draft,
+) async {
+  final conflict = draft.conflict!;
+  final keepMine = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('Conflict in ${key.field} of row ${key.row}'),
+      content: Text(
+        conflict.isDeleted
+            ? 'The row was deleted on the server.\n\n'
+                  'Your text: "${_short(draft.value)}"'
+            : 'You started from: "${_short(draft.baseText)}"\n'
+                  'Your text: "${_short(draft.value)}"\n'
+                  'Server now: "${_short(conflict.serverText!)}"',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: Text(conflict.isDeleted ? 'Discard' : 'Use server value'),
+        ),
+        if (!conflict.isDeleted)
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Keep mine'),
+          ),
+      ],
+    ),
+  );
+  switch (keepMine) {
+    case true:
+      // Unsaved again, on top of the server value; not sent yet.
+      controller.rebaseDraft(key);
+    case false:
+      controller.clearDraft(key);
+    case null:
+      break;
   }
 }
 
@@ -947,9 +1011,10 @@ class _Toolbar extends StatelessWidget {
                 'the same fields on the server. Restoring the drafts would '
                 'silently overwrite their change.\n'
                 'This changes the fields that have drafts on the server, '
-                'then restarts. With "Draft store" on, those cells show a '
-                'warning icon: the draft\'s baseText no longer matches the '
-                'server value.',
+                'then restarts. With "Draft store" on, the restored drafts '
+                'are compared with the server value and version: those cells '
+                'show the server value and a conflict icon. Tap it to keep '
+                'your text (rebaseDraft) or the server\'s (clearDraft).',
             child: OutlinedButton.icon(
               onPressed: busy
                   ? null
@@ -1455,8 +1520,9 @@ class _Tips extends StatelessWidget {
         'with the draft store your text comes back; without it, it is '
         'lost.',
     'Do the same with "Restart, data changed on server": the restored '
-        'drafts show a warning, since saving them would overwrite '
-        'someone else\'s change.',
+        'drafts become conflicts, since saving them would overwrite '
+        'someone else\'s change. "Save all" leaves them out; tap the '
+        'conflict icon to choose.',
     'Height Fixed: open a long note and scroll with the mouse wheel past '
         'its end, with "Scroll list at editor end" on and off.',
     'Set latency to 3 s, saveOrder perRow, and edit cells of different '

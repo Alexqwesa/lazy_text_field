@@ -23,6 +23,14 @@ never overlap. Draft-store calls go through the single `_write` chain so a
 `put` and a later `delete` cannot land out of order. Do not start a save or a
 store call outside those chains.
 
+Restored drafts are checked against their record in `displayText`, which runs
+during build: the queue must not notify there (the controller notifies after
+the frame). Every `displayText` call for a cell must pass that cell's
+`version`; without it the check falls back to text and can flip a draft
+between verified and conflict. Only `restored` drafts are checked; anything
+that saves (`flushUnsaved`, `saveDrafts`, batches) must skip conflicts and
+unverified drafts.
+
 ## Lazy Rendering Rules
 
 - Do not allocate `TextEditingController`, `FocusNode`, `ScrollController`,

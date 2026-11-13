@@ -54,6 +54,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cells.
 - `loadDrafts(where:)`: load only some drafts, for controllers that share
   one store.
+- Restored drafts are checked against their record before they are shown
+  or saved: when their cell builds (with its `text` and `version`), or by
+  the new `reconcileDrafts()` for rows that are not on screen. A draft the
+  record already has is dropped; one whose field text or version is still
+  its base is shown, rebased onto the record's current version; one whose
+  field changed meanwhile, or whose record was deleted, becomes a conflict.
+- `LazyTextFieldDraftStatus.conflict`, with `LazyTextFieldDraft.conflict`
+  (`LazyTextFieldConflict`: the record's text and version now, or
+  `isDeleted`). The cell shows the record's text, and nothing saves the
+  draft. `rebaseDraft(key)` keeps the draft on top of the record's text;
+  `clearDraft(key)` keeps the record's text.
+- `LazyTextFieldDraft.verified`: false for a restored draft not checked
+  yet. `LazyTextFieldServerValue` (text and version) for
+  `reconcileDrafts()`.
 
 ### Fixed
 
@@ -74,7 +88,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   soon as the user started editing any other cell, overwriting the server
   value even if it had changed while the app was closed. Restored drafts are
   now saved only when the user commits one from its cell, or by
-  `saveDrafts()`.
+  `saveDrafts()` once checked against the record (see Added).
+- **Restored drafts were shown over a newer server value**, and
+  `saveDrafts(batch: ...)` sent restored drafts nobody had looked at. A
+  restored draft whose field changed on the server is now a conflict: its
+  cell shows the server value.
 - With a `draftStore`, a draft the store could not hold failed an assert in
   debug builds and was skipped silently in release. It is now reported to
   `FlutterError` in every build (see below for which drafts), the draft
@@ -104,6 +122,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `id.storeKey` (`'table/row/field'`). The JSON has `table`, `row`, `field`,
   and `baseVersion` instead of `key`.
 - `draftStoreErrors` is keyed by draft key (`Map<Object, Object>`).
+- `saveDrafts()` and its batch leave out conflicts and restored drafts not
+  checked yet; `LazyTextFieldSaveDraftsResult` counts them in `conflicts`
+  and `unverified` (and in `remaining`). Before, a batch sent every restored
+  draft. Call `reconcileDrafts()` after `loadDrafts()` for rows that are not
+  on screen.
+- `displayText(key, source, version:)` takes the record's version, to check
+  restored drafts.
 - Cmd+S and Cmd+Enter (macOS) now save, like Ctrl+S and Ctrl+Enter.
 - Shortcuts match their modifiers exactly: Ctrl+Shift+S no longer saves, and
   Escape with a modifier no longer cancels.

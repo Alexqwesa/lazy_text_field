@@ -60,8 +60,16 @@ kept. Without the id and version a draft is never written to the store, only
 reported to `FlutterError`. Use the record id, never a list index, as
 `rowId`. Restored drafts
 (`draft.restored`) are saved only when the user commits them from their cell
-or by `saveDrafts()`, never by a cell switch; check them against the server
-(`draft.baseVersion` or `draft.baseText`) before offering to save. Open editors are not drafts: use
+or by `saveDrafts()`, never by a cell switch. The package checks them against
+the record itself: a cell does it when it builds (so give it the record's
+current `text` and `version`), and `reconcileDrafts({id:
+LazyTextFieldServerValue(text, version: ...)})` does it for rows not on screen
+(call it after `loadDrafts()`; null means the record was deleted). Unchecked
+drafts (`draft.verified == false`) and conflicts
+(`LazyTextFieldDraftStatus.conflict`, details in `draft.conflict`) are never
+saved; show a conflict badge and resolve with `rebaseDraft(key)` (keep the
+user's text) or `clearDraft(key)` (keep the server's). Do not compare
+`baseText` with the server yourself. Open editors are not drafts: use
 `unsavedChanges()` / `hasUnsavedChanges` for "unsaved changes" prompts, and
 `storeOpenEdits()` (on app pause) or `storeOpenEditsAfter` so typed text
 survives the app being killed.
@@ -74,10 +82,10 @@ For server-backed grids, give cells `onCommit` (throw to fail) instead of
 itself) handles drafts and the save queue. Do not keep your
 own draft map, save queue, or "return false and close later" logic:
 
-- The cell shows its draft while pending/failed, and a saved draft until
-  `text` changes.
+- The cell shows its draft while unsaved/pending/failed, a saved draft until
+  `text` changes, and the server `text` for a conflict.
 - Read `LazyTextFieldScope.maybeOf(context)?.draftFor(key)?.status`
-  to style pending/saved/failed cells.
+  to style unsaved/pending/saved/failed/conflict cells.
 - All saves (`onCommit`, `onSave`, `saveDrafts`, batches) share one queue.
   `saveOrder: LazyTextFieldSaveOrder.sequential` (default) never overlaps
   saves; `perRow` runs different rows in parallel (by the cell's `rowId` or

@@ -180,9 +180,8 @@ void main() {
     expect(api.fetchAll()[2].title, original[2].title);
   });
 
-  testWidgets('a restored draft over changed server data shows a warning', (
-    tester,
-  ) async {
+  testWidgets('a restored draft over changed server data is a conflict; '
+      'Keep mine rebases it', (tester) async {
     await pumpDemo(tester);
 
     await edit(tester, 3, Field.title, 'My edit');
@@ -191,13 +190,33 @@ void main() {
     await tester.tap(find.text('Restart, data changed on server'));
     await settle(tester);
 
-    expect(
-      api.fetchAll()[2].title,
-      '${original[2].title} (edited by someone else)',
-    );
+    final theirs = '${original[2].title} (edited by someone else)';
+    expect(api.fetchAll()[2].title, theirs);
     final restored = draft(tester, 3, Field.title)!;
+    expect(restored.status, LazyTextFieldDraftStatus.conflict);
     expect(restored.value, 'My edit');
     expect(restored.baseText, original[2].title);
-    expect(find.byIcon(Icons.warning_amber), findsOneWidget);
+    expect(restored.conflict!.serverText, theirs);
+    // The cell shows the server value; the badge offers the choice.
+    String shown() => tester
+        .widget<LazyTextField>(
+          find.byWidgetPredicate(
+            (w) => w is LazyTextField && w.cellId == cellKey(3, Field.title),
+          ),
+        )
+        .text;
+    expect(shown(), theirs);
+
+    await tester.tap(find.byIcon(Icons.warning_amber));
+    await settle(tester);
+    await tester.tap(find.text('Keep mine'));
+    await settle(tester);
+
+    final rebased = draft(tester, 3, Field.title)!;
+    expect(rebased.status, LazyTextFieldDraftStatus.unsaved);
+    expect(rebased.baseText, theirs);
+    expect(shown(), 'My edit');
+    // Not sent until the user saves it.
+    expect(api.fetchAll()[2].title, theirs);
   });
 }

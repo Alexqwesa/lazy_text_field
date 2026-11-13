@@ -352,9 +352,15 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       LazyTextFieldDraftStatus.pending => draft!.value != value,
       LazyTextFieldDraftStatus.unsaved ||
       LazyTextFieldDraftStatus.failed => true,
+      // Saved, a conflict (its editor shows the record's text), or none.
       _ =>
         value !=
-            (_editStartValue ?? editController.displayText(key, config.text)),
+            (_editStartValue ??
+                editController.displayText(
+                  key,
+                  config.text,
+                  version: cell.version,
+                )),
     };
   }
 
@@ -502,7 +508,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   Object get _draftKey => _draft.key;
 
   String _displayText() =>
-      _drafts?.displayText(_draftKey, widget.text) ?? widget.text;
+      _drafts?.displayText(_draftKey, widget.text, version: _draft.version) ??
+      widget.text;
 
   void _handleDraftChanged(String value) {
     // Typing hides the failed save's error until the next commit.

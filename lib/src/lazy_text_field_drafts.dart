@@ -34,13 +34,14 @@ typedef LazyTextFieldBatchCommit =
 /// Save state of a [LazyTextFieldDraft].
 enum LazyTextFieldDraftStatus {
   /// Kept but not saved yet: its editor closed without a commit (for example
-  /// the cell left the tree), or the controller saves later
-  /// ([LazyTextFieldSaveMode.deferred]).
+  /// the cell left the tree), the controller saves later
+  /// ([LazyTextFieldSaveMode.deferred]), or it was restored from a
+  /// [LazyTextFieldDraftStore] ([LazyTextFieldDraft.restored]).
   ///
   /// Saved by [LazyTextFieldEditController.saveDrafts], or, in
-  /// [LazyTextFieldSaveMode.immediate], when another cell starts editing.
-  /// **Until then the value exists only in memory** (and in the
-  /// [LazyTextFieldDraftStore], if one is set).
+  /// [LazyTextFieldSaveMode.immediate], when another cell starts editing
+  /// (restored drafts excepted). **Until then the value exists only in
+  /// memory** (and in the [LazyTextFieldDraftStore], if one is set).
   unsaved,
 
   /// Queued or saving.
@@ -51,6 +52,85 @@ enum LazyTextFieldDraftStatus {
 
   /// The save failed; [LazyTextFieldDraft.error] holds the error, if any.
   failed,
+
+  /// A restored draft whose record changed since the draft started from it,
+  /// or was deleted: saving it would overwrite a newer value.
+  /// [LazyTextFieldDraft.conflict] holds what the record has now.
+  ///
+  /// The cell shows the record's text, not the draft, and nothing saves the
+  /// draft. Resolve it with `LazyTextFieldEditController.rebaseDraft` (keep
+  /// the draft, on top of the record's text) or `clearDraft` (keep the
+  /// record's text). A value committed from the cell also replaces it.
+  conflict,
+}
+
+/// What a record field holds now: its [text] and [version], as the app last
+/// read them. See `LazyTextFieldEditController.reconcileDrafts`.
+@immutable
+class LazyTextFieldServerValue {
+  /// Creates a record field's current value.
+  const LazyTextFieldServerValue(this.text, {this.version});
+
+  /// The field's text.
+  final String text;
+
+  /// The record's version, as the cells get it (for example its
+  /// `updatedAt`); null if the app has none.
+  final String? version;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LazyTextFieldServerValue &&
+      other.text == text &&
+      other.version == version;
+
+  @override
+  int get hashCode => Object.hash(text, version);
+
+  @override
+  String toString() =>
+      'LazyTextFieldServerValue(${text.length} chars, version: $version)';
+}
+
+/// Why a draft is a [LazyTextFieldDraftStatus.conflict]: what its record
+/// holds now.
+@immutable
+class LazyTextFieldConflict {
+  /// The record has [serverText] at [serverVersion], not the text the draft
+  /// started from.
+  const LazyTextFieldConflict({
+    required String this.serverText,
+    this.serverVersion,
+  });
+
+  /// The record no longer exists.
+  const LazyTextFieldConflict.deleted()
+    : serverText = null,
+      serverVersion = null;
+
+  /// The field's text now; null when the record was deleted.
+  final String? serverText;
+
+  /// The record's version now, if known.
+  final String? serverVersion;
+
+  /// Whether the record was deleted.
+  bool get isDeleted => serverText == null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LazyTextFieldConflict &&
+      other.serverText == serverText &&
+      other.serverVersion == serverVersion;
+
+  @override
+  int get hashCode => Object.hash(serverText, serverVersion);
+
+  @override
+  String toString() => isDeleted
+      ? 'LazyTextFieldConflict(deleted)'
+      : 'LazyTextFieldConflict(${serverText!.length} chars, '
+            'version: $serverVersion)';
 }
 
 /// When a [LazyTextFieldEditController] saves `onCommit` cells.
@@ -179,6 +259,8 @@ class LazyTextFieldDraft {
     required Set<String> staleSources,
     this.error,
     this.restored = false,
+    this.verified = true,
+    this.conflict,
   }) : _staleSources = staleSources;
 
   /// The kept text.
@@ -205,11 +287,27 @@ class LazyTextFieldDraft {
   /// and nobody has committed it since.
   ///
   /// A restored draft is not saved when another cell starts editing: the
-  /// user has not seen it yet, and the server value may have changed while
-  /// the app was closed. It is saved when the user commits it from its cell
-  /// or by `saveDrafts()`. Keeping it unchanged (its cell left the tree)
-  /// leaves it restored.
+  /// user has not seen it yet. It is first compared with its record (see
+  /// [verified]); if the record changed meanwhile, it becomes a
+  /// [LazyTextFieldDraftStatus.conflict]. Otherwise it is saved when the
+  /// user commits it from its cell, or by `saveDrafts()`. Keeping it
+  /// unchanged (its cell left the tree) leaves it restored.
   final bool restored;
+
+  /// Whether this draft was compared with its record's current text and
+  /// version; false only for a [restored] draft that was not yet.
+  ///
+  /// A restored draft is compared when a cell with its draft id builds, or
+  /// by `LazyTextFieldEditController.reconcileDrafts` (for rows that are not
+  /// on screen). Until then `saveDrafts()` leaves it out
+  /// ([LazyTextFieldSaveDraftsResult.unverified]): its record may have
+  /// changed while the app was closed. Drafts kept in this session are
+  /// always verified.
+  final bool verified;
+
+  /// What the record holds now, when [status] is
+  /// [LazyTextFieldDraftStatus.conflict]; otherwise null.
+  final LazyTextFieldConflict? conflict;
 
   // Source texts that predate this draft. A saved draft stays visible while
   // the source still shows one of them (the refresh has not arrived yet).
@@ -232,6 +330,8 @@ class LazyTextFieldDraft {
   String toString() =>
       'LazyTextFieldDraft($status, ${value.length} chars'
       '${restored ? ', restored' : ''}'
+      '${verified ? '' : ', unverified'}'
+      '${conflict == null ? '' : ', $conflict'}'
       '${error == null ? '' : ', error: $error'})';
 }
 
@@ -243,6 +343,8 @@ class LazyTextFieldSaveDraftsResult {
     this.saved = 0,
     this.failed = 0,
     this.skipped = 0,
+    this.conflicts = 0,
+    this.unverified = 0,
     this.remaining = 0,
   });
 
@@ -253,27 +355,39 @@ class LazyTextFieldSaveDraftsResult {
   /// Drafts this call sent whose save failed; they stay as failed drafts.
   final int failed;
 
-  /// Drafts left unsaved because no saver is known for them (a draft loaded
-  /// from a [LazyTextFieldDraftStore] whose cell has not been built since).
+  /// Drafts left unsaved because no saver is known for them: restored drafts
+  /// that `reconcileDrafts` verified but whose cell has not been built since.
   /// Pass a `batch` to save those too.
   final int skipped;
 
+  /// Drafts left unsaved because their record changed or was deleted
+  /// ([LazyTextFieldDraftStatus.conflict]).
+  final int conflicts;
+
+  /// Restored drafts left unsaved because they were not compared with their
+  /// record yet ([LazyTextFieldDraft.verified]): no cell showed them, and
+  /// `reconcileDrafts` did not cover them.
+  final int unverified;
+
   /// Drafts not saved when the call finished, whatever the reason: failed,
-  /// skipped, changed again while saving, or kept by saves that were already
-  /// running when the call started and then failed.
+  /// skipped, [conflicts], [unverified], changed again while saving, or kept
+  /// by saves that were already running when the call started and then
+  /// failed.
   ///
   /// `LazyTextFieldEditController.saveDrafts` commits open editors first by
   /// default; with `includeOpenEdits: false`, open editors are not drafts and
   /// are not counted.
   final int remaining;
 
-  /// Whether nothing is left to save: no failure and no [remaining] draft.
+  /// Whether nothing is left to save: no failure and no [remaining] draft
+  /// (so no conflict and no unverified draft either).
   bool get allSaved => failed == 0 && remaining == 0;
 
   @override
   String toString() =>
       'LazyTextFieldSaveDraftsResult(saved: $saved, failed: $failed, '
-      'skipped: $skipped, remaining: $remaining)';
+      'skipped: $skipped, conflicts: $conflicts, unverified: $unverified, '
+      'remaining: $remaining)';
 }
 
 /// Text that is not saved yet: a draft that is not saved, or an open editor
@@ -396,9 +510,9 @@ class LazyTextFieldStoredDraft {
 /// Local storage for drafts that are not saved yet, so they survive an app
 /// restart (for example a Hive box).
 ///
-/// The controller calls [put] when a draft becomes unsaved, pending, or
-/// failed, and [delete] when it is saved or discarded. Load them back with
-/// [LazyTextFieldEditController.loadDrafts].
+/// The controller calls [put] when a draft becomes unsaved, pending, failed,
+/// or a conflict, and [delete] when it is saved or discarded. Load them back
+/// with [LazyTextFieldEditController.loadDrafts].
 ///
 /// Only drafts that say which record they belong to are stored: their key is
 /// a complete [LazyTextFieldDraftId] and they have a version
@@ -507,12 +621,14 @@ class LazyTextFieldDraftQueue {
   /// The draft for [key], if any.
   LazyTextFieldDraft? draftFor(Object key) => _drafts[key];
 
-  /// Text a cell should display for [key] when its source text is [source].
+  /// Text a cell should display for [key] when its source text is [source]
+  /// at [version].
   ///
   /// Drops a saved draft once [source] no longer matches a text that
-  /// predates it.
-  String displayText(Object key, String source) {
-    final draft = _drafts[key];
+  /// predates it, and compares a restored draft with [source] and [version]
+  /// first (see [reconcile]). Does not notify.
+  String displayText(Object key, String source, {String? version}) {
+    var draft = _drafts[key];
     if (draft == null) return source;
     if (draft.status == LazyTextFieldDraftStatus.saved &&
         !draft._staleSources.contains(source)) {
@@ -520,7 +636,130 @@ class LazyTextFieldDraftQueue {
       _remove(key);
       return source;
     }
-    return draft.value;
+    if (draft.restored) {
+      _check(key, draft, LazyTextFieldServerValue(source, version: version));
+      draft = _drafts[key];
+      if (draft == null) return source;
+    }
+    return draft.status == LazyTextFieldDraftStatus.conflict
+        ? source
+        : draft.value;
+  }
+
+  /// Compares the restored drafts in [values] with what their records hold
+  /// now (null: the record was deleted); see
+  /// `LazyTextFieldEditController.reconcileDrafts`. Other drafts are left
+  /// alone. Returns whether a draft changed.
+  bool reconcile(Map<Object, LazyTextFieldServerValue?> values) {
+    var changed = false;
+    for (final MapEntry(:key, value: server) in values.entries) {
+      final draft = _drafts[key];
+      if (draft != null && draft.restored && _check(key, draft, server)) {
+        changed = true;
+      }
+    }
+    if (changed) _notify();
+    return changed;
+  }
+
+  /// Compares the restored [draft] for [key] with [server], what its record
+  /// holds now (null: deleted). Returns whether the draft changed.
+  ///
+  /// - The record already has the draft's text: the draft is dropped.
+  /// - The field's text is still the draft's base, or the record's version
+  ///   is still the draft's base version: the draft is verified, and rebased
+  ///   onto [server] (another field of the row may have changed its version).
+  /// - Otherwise the field changed since the draft started: a conflict.
+  bool _check(
+    Object key,
+    LazyTextFieldDraft draft,
+    LazyTextFieldServerValue? server,
+  ) {
+    if (server == null) {
+      return _setConflict(key, draft, const LazyTextFieldConflict.deleted());
+    }
+    if (server.text == draft.value) {
+      _remove(key);
+      return true;
+    }
+    final version = server.version;
+    final unchanged =
+        server.text == draft.baseText ||
+        (version != null && version == draft.baseVersion);
+    if (!unchanged) {
+      return _setConflict(
+        key,
+        draft,
+        LazyTextFieldConflict(serverText: server.text, serverVersion: version),
+      );
+    }
+    final baseVersion = version ?? draft.baseVersion;
+    if (draft.status == LazyTextFieldDraftStatus.unsaved &&
+        draft.verified &&
+        draft.baseText == server.text &&
+        draft.baseVersion == baseVersion) {
+      return false;
+    }
+    _set(key, _rebased(draft, server.text, baseVersion));
+    return true;
+  }
+
+  bool _setConflict(
+    Object key,
+    LazyTextFieldDraft draft,
+    LazyTextFieldConflict conflict,
+  ) {
+    if (draft.status == LazyTextFieldDraftStatus.conflict &&
+        draft.conflict == conflict) {
+      return false;
+    }
+    _set(
+      key,
+      LazyTextFieldDraft._(
+        value: draft.value,
+        baseText: draft.baseText,
+        baseVersion: draft.baseVersion,
+        status: LazyTextFieldDraftStatus.conflict,
+        staleSources: draft._staleSources,
+        restored: draft.restored,
+        conflict: conflict,
+      ),
+    );
+    return true;
+  }
+
+  /// [draft] as an unsaved, verified draft on top of [baseText] at
+  /// [baseVersion].
+  static LazyTextFieldDraft _rebased(
+    LazyTextFieldDraft draft,
+    String baseText,
+    String? baseVersion,
+  ) => LazyTextFieldDraft._(
+    value: draft.value,
+    baseText: baseText,
+    baseVersion: baseVersion,
+    status: LazyTextFieldDraftStatus.unsaved,
+    staleSources: {...draft._staleSources, baseText}..remove(draft.value),
+    restored: draft.restored,
+  );
+
+  /// Keeps the conflicting draft for [key] on top of what its record holds
+  /// now, as an unsaved draft; see `LazyTextFieldEditController.rebaseDraft`.
+  /// Returns false if [key] has no conflict, or its record was deleted.
+  bool rebase(Object key) {
+    final draft = _drafts[key];
+    final serverText = draft?.conflict?.serverText;
+    if (draft == null || serverText == null) return false;
+    _set(
+      key,
+      _rebased(
+        draft,
+        serverText,
+        draft.conflict!.serverVersion ?? draft.baseVersion,
+      ),
+    );
+    _notify();
+    return true;
   }
 
   /// Forgets the draft for [key]. A save that is still running continues,
@@ -580,12 +819,25 @@ class LazyTextFieldDraftQueue {
     // Saves queued before this call (pending drafts, onSave submits) must
     // finish before the result can say what is left.
     final earlier = Set<Future<void>>.of(_tails.values);
-    final targets = <Object, LazyTextFieldDraft>{
-      for (final entry in _drafts.entries)
-        if (entry.value.status == LazyTextFieldDraftStatus.unsaved ||
-            entry.value.status == LazyTextFieldDraftStatus.failed)
-          entry.key: entry.value,
-    };
+    // Conflicts and restored drafts nobody compared with their record yet
+    // stay out: saving them could overwrite a newer value.
+    var conflicts = 0;
+    var unverified = 0;
+    final targets = <Object, LazyTextFieldDraft>{};
+    for (final MapEntry(:key, value: draft) in _drafts.entries) {
+      switch (draft.status) {
+        case LazyTextFieldDraftStatus.conflict:
+          conflicts++;
+        case LazyTextFieldDraftStatus.unsaved || LazyTextFieldDraftStatus.failed
+            when !draft.verified:
+          unverified++;
+        case LazyTextFieldDraftStatus.unsaved ||
+            LazyTextFieldDraftStatus.failed:
+          targets[key] = draft;
+        case LazyTextFieldDraftStatus.pending || LazyTextFieldDraftStatus.saved:
+          break;
+      }
+    }
 
     var saved = 0;
     var failed = 0;
@@ -615,6 +867,8 @@ class LazyTextFieldDraftQueue {
       saved: saved,
       failed: failed,
       skipped: skipped,
+      conflicts: conflicts,
+      unverified: unverified,
       remaining: _drafts.values
           .where((draft) => draft.status != LazyTextFieldDraftStatus.saved)
           .length,
@@ -855,9 +1109,10 @@ class LazyTextFieldDraftQueue {
     );
   }
 
-  /// Restores the drafts in [store] that are not in memory as unsaved
-  /// drafts, keyed by their [LazyTextFieldDraftId]; returns how many were
-  /// restored. With [where], only drafts whose id passes it are loaded.
+  /// Restores the drafts in [store] that are not in memory as unsaved,
+  /// unverified drafts, keyed by their [LazyTextFieldDraftId]; returns how
+  /// many were restored. With [where], only drafts whose id passes it are
+  /// loaded.
   Future<int> load({bool Function(LazyTextFieldDraftId id)? where}) async {
     final store = this.store;
     if (store == null) return 0;
@@ -877,6 +1132,7 @@ class LazyTextFieldDraftQueue {
         status: LazyTextFieldDraftStatus.unsaved,
         staleSources: {record.baseText}..remove(record.value),
         restored: true,
+        verified: false,
       );
       restored++;
     }
@@ -892,24 +1148,30 @@ class LazyTextFieldDraftQueue {
     LazyTextFieldDraftStatus status,
   ) {
     final previous = _drafts[key];
+    // Text and version stay those the first draft started from. A conflict's
+    // base is out of date: a new value starts from what the cell shows now.
+    final base = previous?.status == LazyTextFieldDraftStatus.conflict
+        ? null
+        : previous;
     final stale = <String>{
       ...?previous?._staleSources,
       if (previous != null) previous.value,
       source,
     }..remove(value);
+    // Kept again unchanged (its cell left the tree): still not committed.
+    final restored =
+        status == LazyTextFieldDraftStatus.unsaved &&
+        base != null &&
+        base.restored &&
+        base.value == value;
     final draft = LazyTextFieldDraft._(
       value: value,
-      // Text and version stay those the first draft started from.
-      baseText: previous?.baseText ?? source,
-      baseVersion: previous != null ? previous.baseVersion : version,
+      baseText: base?.baseText ?? source,
+      baseVersion: base != null ? base.baseVersion : version,
       status: status,
       staleSources: stale,
-      // Kept again unchanged (its cell left the tree): still not committed.
-      restored:
-          status == LazyTextFieldDraftStatus.unsaved &&
-          previous != null &&
-          previous.restored &&
-          previous.value == value,
+      restored: restored,
+      verified: !restored || base.verified,
     );
     _set(key, draft);
     return draft;
@@ -950,8 +1212,8 @@ class LazyTextFieldDraftQueue {
     _persist(key, _drafts[key]);
   }
 
-  // Unsaved, pending, and failed drafts are written; saved or removed ones
-  // are deleted. Pending drafts are written too: if the app stops mid-save,
+  // Unsaved, pending, failed, and conflicting drafts are written; saved or
+  // removed ones are deleted. Pending drafts are written too: if the app stops mid-save,
   // the text comes back as unsaved. An open editor's stored text wins.
   void _persist(Object key, LazyTextFieldDraft? draft) {
     final store = this.store;
