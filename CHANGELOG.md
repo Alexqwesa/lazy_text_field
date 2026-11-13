@@ -86,7 +86,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`LazyTextFieldControllerScope` is now `LazyTextFieldScope`**, the one
   scope widget of the package: `LazyTextFieldScope(controller:, tableId:,
   shortcuts:, child:)` and `LazyTextFieldScope.row(rowId:, version:,
-  child:)`. The old name still compiles, deprecated. Scopes nest: what a
+  child:)`. Rename `LazyTextFieldControllerScope` to `LazyTextFieldScope`;
+  the arguments are the same. Scopes nest: what a
   scope leaves out comes from the scope above, so a scope without a
   `controller` inside another one now uses that one's controller instead of
   creating its own.

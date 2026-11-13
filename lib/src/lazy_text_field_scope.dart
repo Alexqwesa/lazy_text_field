@@ -118,12 +118,6 @@ abstract class LazyTextFieldScope implements Widget {
       context.dependOnInheritedWidgetOfExactType<_ScopeData>()?.notifier;
 }
 
-/// The 2.x name of [LazyTextFieldScope].
-@Deprecated(
-  'Use LazyTextFieldScope. LazyTextFieldControllerScope was renamed in 3.0.',
-)
-typedef LazyTextFieldControllerScope = LazyTextFieldScope;
-
 /// The nearest scope's table, if any. Not exported.
 String? lazyTextFieldTableIdOf(BuildContext context) =>
     context.dependOnInheritedWidgetOfExactType<_ScopeData>()?.tableId;

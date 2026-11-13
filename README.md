@@ -725,7 +725,7 @@ ScopedLazyTextField(
 ## Migrating from 2.x
 
 `LazyTextFieldControllerScope` is now `LazyTextFieldScope` (same arguments,
-plus `tableId` and `shortcuts`). The old name still compiles, deprecated.
+plus `tableId` and `shortcuts`): rename it.
 
 Code that uses only `LazyTextField` or `StatefulLazyTextField` needs no
 changes. 3.0 is a major version because `ScopedLazyTextField` with a

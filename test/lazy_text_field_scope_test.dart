@@ -120,28 +120,6 @@ void main() {
       expect(outer.drafts, isEmpty);
     });
   });
-
-  testWidgets('the 2.x name LazyTextFieldControllerScope still works', (
-    tester,
-  ) async {
-    final controller = LazyTextFieldEditController();
-    addTearDown(controller.dispose);
-    LazyTextFieldEditController? seen;
-    await tester.pumpWidget(
-      // ignore: deprecated_member_use_from_same_package
-      LazyTextFieldControllerScope(
-        controller: controller,
-        child: Builder(
-          builder: (context) {
-            // ignore: deprecated_member_use_from_same_package
-            seen = LazyTextFieldControllerScope.of(context);
-            return const SizedBox();
-          },
-        ),
-      ),
-    );
-    expect(seen, same(controller));
-  });
 }
 
 /// Opens the only cell in [widget], types, and presses Enter.
