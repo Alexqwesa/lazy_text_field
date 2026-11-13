@@ -110,8 +110,8 @@ enum LazyTextFieldSubmitClose {
 /// [table].
 ///
 /// A `ScopedLazyTextField` makes its draft key from the scopes: the
-/// `tableId` of its `LazyTextFieldControllerScope`, the `rowId` of its
-/// `LazyTextFieldRowScope` (or its own), and its `fieldId`. Pass an id as
+/// `tableId` of its `LazyTextFieldScope`, the `rowId` of its
+/// `LazyTextFieldScope.row` (or its own), and its `fieldId`. Pass an id as
 /// `ScopedLazyTextField.draftKey` only for a cell that cannot use them.
 ///
 /// A [LazyTextFieldDraftStore] requires an id and a version: the draft is
@@ -981,9 +981,9 @@ class LazyTextFieldDraftQueue {
             'Draft $key is kept in memory only: a LazyTextFieldDraftStore '
             'stores a draft only when it says which record it belongs to, and '
             'this one has no $missing.\n'
-            'Set tableId on the LazyTextFieldControllerScope, rowId and '
+            'Set tableId on the LazyTextFieldScope, rowId and '
             "version (for example the row's updatedAt) on a "
-            'LazyTextFieldRowScope around the row or on the cell, and fieldId '
+            'LazyTextFieldScope.row around the row or on the cell, and fieldId '
             'on the cell. Or give the cell draftKey: LazyTextFieldDraftId(...) '
             'and version.',
           ),

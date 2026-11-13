@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lazy_text_field/src/lazy_text_field.dart';
+import 'package:lazy_text_field/src/lazy_text_field_scope.dart';
 import 'package:lazy_text_field/src/lazy_text_field_shortcuts.dart';
 
 /// Commits an edited lazy text field value.
@@ -107,9 +108,9 @@ class StatefulLazyTextField extends StatefulWidget {
   /// {@macro lazy_text_field.chainEditorScroll}
   final bool chainEditorScroll;
 
-  /// What keys do in the open editor. Null (default) uses the closest
-  /// [LazyTextFieldShortcuts] above this field, or
-  /// [LazyTextFieldShortcuts.defaults].
+  /// What keys do in the open editor. Null (default) uses the shortcuts of
+  /// the [LazyTextFieldScope] above this field, or
+  /// [LazyTextFieldScope.defaultShortcuts].
   final Map<ShortcutActivator, LazyTextFieldAction>? shortcuts;
 
   /// Passed through to the internal [TextField.inputFormatters].
@@ -260,9 +261,9 @@ class _StatefulLazyTextFieldState extends State<StatefulLazyTextField> {
     final controller = _controller;
     if (controller == null) return KeyEventResult.ignored;
 
-    final action = LazyTextFieldShortcuts.actionFor(
+    final action = lazyTextFieldActionFor(
       event,
-      widget.shortcuts ?? LazyTextFieldShortcuts.of(context),
+      widget.shortcuts ?? lazyTextFieldShortcutsOf(context),
     );
     if (action == LazyTextFieldAction.cancel) {
       _cancel();

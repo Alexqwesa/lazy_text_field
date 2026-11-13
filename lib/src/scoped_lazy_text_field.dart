@@ -3,16 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lazy_text_field/src/lazy_text_field.dart';
+import 'package:lazy_text_field/src/lazy_text_field_scope.dart';
 import 'package:lazy_text_field/src/lazy_text_field_shortcuts.dart';
-import 'package:lazy_text_field/src/lazy_text_field_controller_scope.dart';
 import 'package:lazy_text_field/src/lazy_text_field_drafts.dart';
 import 'package:lazy_text_field/src/lazy_text_field_edit_controller.dart';
-import 'package:lazy_text_field/src/lazy_text_field_row_scope.dart';
 import 'package:lazy_text_field/src/stateful_lazy_text_field.dart';
 
 /// [LazyTextField] cell wired to a shared [LazyTextFieldEditController].
 ///
-/// Must be placed under a [LazyTextFieldControllerScope].
+/// Must be placed under a [LazyTextFieldScope].
 class ScopedLazyTextField extends StatefulWidget {
   /// Creates a lazy text field backed by the nearest controller scope.
   ///
@@ -104,8 +103,8 @@ class ScopedLazyTextField extends StatefulWidget {
 
   /// The field of the record this cell edits, for example `'title'`.
   ///
-  /// With a table ([LazyTextFieldControllerScope.tableId]) and a row
-  /// ([rowId] or [LazyTextFieldRowScope.rowId]), the cell's draft key is
+  /// With a table ([LazyTextFieldScope]'s `tableId`) and a row
+  /// ([rowId] or [LazyTextFieldScope.row]), the cell's draft key is
   /// `LazyTextFieldDraftId(table: tableId, row: '$rowId', field: fieldId)`:
   /// the draft belongs to the record, not to the cell, so it follows the
   /// record when rows are sorted, filtered, or reloaded, and two tables
@@ -114,7 +113,7 @@ class ScopedLazyTextField extends StatefulWidget {
   final String? fieldId;
 
   /// The id of the record this cell edits; defaults to the nearest
-  /// [LazyTextFieldRowScope.rowId]. Not its position in a list: the id must
+  /// [LazyTextFieldScope.row]. Not its position in a list: the id must
   /// stay with the record when rows are sorted, filtered, or reloaded.
   ///
   /// Part of the draft key (see [fieldId]), and the cell's save lane under
@@ -124,7 +123,7 @@ class ScopedLazyTextField extends StatefulWidget {
   /// The version of the record [text] comes from, as a token: for example
   /// its `updatedAt` (`row.updatedAt.toIso8601String()`), a revision
   /// number, or an ETag. Defaults to the nearest
-  /// [LazyTextFieldRowScope.version].
+  /// [LazyTextFieldScope.row].
   ///
   /// Kept with this cell's draft as [LazyTextFieldDraft.baseVersion]: the
   /// version the change started from. A
@@ -198,9 +197,9 @@ class ScopedLazyTextField extends StatefulWidget {
   /// {@macro lazy_text_field.chainEditorScroll}
   final bool chainEditorScroll;
 
-  /// What keys do in the open editor. Null (default) uses the closest
-  /// [LazyTextFieldShortcuts] above this field, or
-  /// [LazyTextFieldShortcuts.defaults].
+  /// What keys do in the open editor. Null (default) uses the shortcuts of
+  /// the [LazyTextFieldScope] above this field, or
+  /// [LazyTextFieldScope.defaultShortcuts].
   final Map<ShortcutActivator, LazyTextFieldAction>? shortcuts;
 
   /// Whether this field can edit while other scoped fields remain active.
@@ -420,7 +419,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
 
   @override
   Widget build(BuildContext context) {
-    final editController = LazyTextFieldControllerScope.of(context);
+    final editController = LazyTextFieldScope.of(context);
     if (_editController != editController) {
       _detachKeyboardHandler();
       _editController?.removeCommitHandler(widget.cellId, _commitHandler);
@@ -575,9 +574,9 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     final controller = _editController?.controllerFor(widget.cellId);
     if (controller == null) return KeyEventResult.ignored;
 
-    final action = LazyTextFieldShortcuts.actionFor(
+    final action = lazyTextFieldActionFor(
       event,
-      widget.shortcuts ?? LazyTextFieldShortcuts.of(context),
+      widget.shortcuts ?? lazyTextFieldShortcutsOf(context),
     );
     if (action == LazyTextFieldAction.cancel) {
       _cancel();
@@ -841,12 +840,12 @@ class _CellDraft {
       rowId = cell.rowId,
       version = cell.version;
 
-  /// From the cell, the nearest [LazyTextFieldRowScope], and the table of
-  /// the nearest [LazyTextFieldControllerScope].
+  /// From the cell, the nearest [LazyTextFieldScope.row], and the table of
+  /// the nearest [LazyTextFieldScope].
   factory _CellDraft.resolve(BuildContext context, ScopedLazyTextField cell) {
-    final row = LazyTextFieldRowScope.maybeOf(context);
+    final row = lazyTextFieldRowOf(context);
     final rowId = cell.rowId ?? row?.rowId;
-    final table = LazyTextFieldControllerScope.tableIdOf(context);
+    final table = lazyTextFieldTableIdOf(context);
     final field = cell.fieldId;
     return _CellDraft(
       key:

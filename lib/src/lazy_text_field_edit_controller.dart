@@ -52,8 +52,8 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// A draft is written only when it says which record it belongs to: its
   /// key is a [LazyTextFieldDraftId] with a table, row, and field, and it
   /// has a version (for example the row's `updatedAt`). Set `tableId` on the
-  /// [LazyTextFieldControllerScope], `rowId` and `version` on a
-  /// `LazyTextFieldRowScope` (or the cell), and `fieldId` on each cell. A
+  /// [LazyTextFieldScope], `rowId` and `version` on a
+  /// `LazyTextFieldScope.row` (or the cell), and `fieldId` on each cell. A
   /// draft missing any of them is never written: it is kept in memory only,
   /// reported to [FlutterError] once (in release builds too), and makes
   /// [whenDraftsStored] return false while it exists. Call [loadDrafts] at

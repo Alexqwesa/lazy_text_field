@@ -86,7 +86,7 @@ void main() {
   );
 
   Widget row(Object rowId, List<Widget> cells, {String? version = 'v1'}) =>
-      LazyTextFieldRowScope(
+      LazyTextFieldScope.row(
         rowId: rowId,
         version: version,
         child: Column(children: cells),
@@ -102,7 +102,7 @@ void main() {
       home: Scaffold(
         body: Align(
           alignment: Alignment.topLeft,
-          child: LazyTextFieldControllerScope(
+          child: LazyTextFieldScope(
             controller: controller,
             tableId: tableId,
             child: Column(children: children),
@@ -222,7 +222,7 @@ void main() {
       final controller = newController(store: store);
       await pumpTable(tableId: null, tester, controller, [
         for (final table in ['tasks', 'notes'])
-          LazyTextFieldControllerScope(
+          LazyTextFieldScope(
             controller: controller,
             tableId: table,
             child: row(1, [cell('$table-1')]),

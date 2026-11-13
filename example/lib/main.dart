@@ -251,11 +251,11 @@ class MockApi extends ChangeNotifier {
 /// Cell id of a field: unique among the cells of the controller.
 String cellKey(int rowId, Field field) => 'row$rowId.${field.name}';
 
-/// The table the cells edit: [LazyTextFieldControllerScope.tableId].
+/// The table the cells edit: the `tableId` of the [LazyTextFieldScope].
 const tasksTable = 'tasks';
 
 /// Draft id of a field, as the cells make it from the scopes: the table,
-/// the row's id ([LazyTextFieldRowScope]), and the cell's `fieldId`.
+/// the row's id ([LazyTextFieldScope.row]), and the cell's `fieldId`.
 LazyTextFieldDraftId draftIdOf(int rowId, Field field) =>
     LazyTextFieldDraftId(table: tasksTable, row: '$rowId', field: field.name);
 
@@ -601,7 +601,7 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
   }
 
   Widget _buildMain(BuildContext context) {
-    return LazyTextFieldControllerScope(
+    return LazyTextFieldScope(
       controller: _controller,
       // With a row scope and a cell's fieldId, each draft knows its record,
       // as the draft store requires.
@@ -636,7 +636,7 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       // The record the row's cells edit, and the version their drafts
       // start from. Also gives each row its own save lane under perRow.
-      child: LazyTextFieldRowScope(
+      child: LazyTextFieldScope.row(
         rowId: row.id,
         version: '${row.version}',
         child: _buildRowCells(row),
@@ -750,8 +750,7 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
               onSave: useCommit ? null : (value) => _save(row.id, field, value),
               closeOnSubmit: _closeOnSubmit,
               errorMessage:
-                  !useCommit &&
-                      LazyTextFieldControllerScope.of(context).isEditing(key)
+                  !useCommit && LazyTextFieldScope.of(context).isEditing(key)
                   ? _onSaveErrors[key]
                   : null,
               errorMessageOf: (error) =>
@@ -816,9 +815,7 @@ class _DraftBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final draft = LazyTextFieldControllerScope.maybeOf(
-      context,
-    )?.draftFor(draftKey);
+    final draft = LazyTextFieldScope.maybeOf(context)?.draftFor(draftKey);
     final colors = Theme.of(context).colorScheme;
     // baseText is the value the user started from. If the server value
     // changed since, saving the draft overwrites someone else's change.

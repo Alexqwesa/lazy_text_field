@@ -64,7 +64,7 @@ void main() {
       addTearDown(controller.dispose);
       return tester.pumpWidget(
         _app(
-          LazyTextFieldControllerScope(
+          LazyTextFieldScope(
             controller: controller,
             child: Column(
               children: [
@@ -383,7 +383,7 @@ void main() {
       addTearDown(scroll.dispose);
       await tester.pumpWidget(
         _app(
-          LazyTextFieldControllerScope(
+          LazyTextFieldScope(
             controller: controller,
             child: SizedBox(
               width: 200,
@@ -576,7 +576,7 @@ void main() {
       addTearDown(cellId.dispose);
       await tester.pumpWidget(
         _app(
-          LazyTextFieldControllerScope(
+          LazyTextFieldScope(
             controller: controller,
             child: ValueListenableBuilder(
               valueListenable: cellId,

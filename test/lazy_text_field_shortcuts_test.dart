@@ -41,7 +41,7 @@ void main() {
           alignment: Alignment.topLeft,
           child: scope == null
               ? field
-              : LazyTextFieldShortcuts(shortcuts: scope, child: field),
+              : LazyTextFieldScope(shortcuts: scope, child: field),
         ),
       ),
     );
@@ -113,10 +113,12 @@ void main() {
     });
   });
 
-  group('LazyTextFieldShortcuts', () {
+  group('LazyTextFieldScope shortcuts', () {
     testWidgets('a key left out of the map does nothing', (tester) async {
-      final withoutEscape = Map.of(LazyTextFieldShortcuts.defaults)
-        ..remove(LazyTextFieldShortcuts.escape);
+      // A const activator is the same object as the default's key.
+      final withoutEscape = Map.of(LazyTextFieldScope.defaultShortcuts)
+        ..remove(const SingleActivator(LogicalKeyboardKey.escape));
+      expect(withoutEscape, hasLength(6));
       await open(tester, app(stateful(), scope: withoutEscape));
 
       await press(tester, LogicalKeyboardKey.escape);
@@ -165,7 +167,7 @@ void main() {
               SingleActivator(LogicalKeyboardKey.f2): LazyTextFieldAction.save,
             },
           ),
-          scope: LazyTextFieldShortcuts.defaults,
+          scope: LazyTextFieldScope.defaultShortcuts,
         ),
       );
 
@@ -189,7 +191,7 @@ void main() {
       await open(
         tester,
         app(
-          LazyTextFieldControllerScope(
+          LazyTextFieldScope(
             controller: controller,
             child: ScopedLazyTextField(
               cellId: 'cell',

@@ -19,7 +19,7 @@ Use `LazyTextField` when the caller owns edit state and supplies a
 `TextEditingController` and `FocusNode` only while editing.
 
 Use `StatefulLazyTextField` for local editing. Use
-`LazyTextFieldControllerScope` with `ScopedLazyTextField` when many cells share
+`LazyTextFieldScope` with `ScopedLazyTextField` when many cells share
 one edit manager.
 
 When a scoped cell starts editing, the controller closes the others. Since
@@ -33,7 +33,7 @@ cell starts editing or by `saveDrafts()`, and never saved otherwise;
 `onWillStartEditing`.
 
 Editor keys (Escape cancels; Ctrl/Cmd+S and Ctrl/Cmd+Enter save) are set with
-`LazyTextFieldShortcuts` above the fields or a field's `shortcuts` parameter,
+`LazyTextFieldScope(shortcuts: ...)` above the fields or a field's `shortcuts` parameter,
 not with Flutter's `Shortcuts` widget, which the field's focus node bypasses.
 
 ## Background Saves
@@ -49,8 +49,8 @@ during the save). `onSaved` fires for
 every successful cell save, even after the cell left the tree, so do not use
 the cell's context in it. To survive restarts, pass a
 `LazyTextFieldDraftStore` (for example a Hive box) as `draftStore`, set
-`tableId` on the `LazyTextFieldControllerScope`, wrap each row in
-`LazyTextFieldRowScope(rowId: record.id, version: record.updatedAt
+`tableId` on the `LazyTextFieldScope`, wrap each row in
+`LazyTextFieldScope.row(rowId: record.id, version: record.updatedAt
 .toIso8601String())`, and give each cell a `fieldId` (a cell's own `rowId` /
 `version` work without a row scope; `draftKey: LazyTextFieldDraftId(...)`
 overrides all of it). Call `loadDrafts()` at startup (`where:` when
@@ -76,12 +76,12 @@ own draft map, save queue, or "return false and close later" logic:
 
 - The cell shows its draft while pending/failed, and a saved draft until
   `text` changes.
-- Read `LazyTextFieldControllerScope.maybeOf(context)?.draftFor(key)?.status`
+- Read `LazyTextFieldScope.maybeOf(context)?.draftFor(key)?.status`
   to style pending/saved/failed cells.
 - All saves (`onCommit`, `onSave`, `saveDrafts`, batches) share one queue.
   `saveOrder: LazyTextFieldSaveOrder.sequential` (default) never overlaps
   saves; `perRow` runs different rows in parallel (by the cell's `rowId` or
-  its `LazyTextFieldRowScope`). Saves of one
+  its `LazyTextFieldScope.row`). Saves of one
   draft key never overlap in either order, so do not add your own
   "latest save wins" guards.
 - `onCommit` runs when its queue turn comes; compute request state such as

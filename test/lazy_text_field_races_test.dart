@@ -62,7 +62,7 @@ void main() {
       );
       return tester.pumpWidget(
         _app(
-          LazyTextFieldControllerScope(
+          LazyTextFieldScope(
             controller: controller,
             child: Column(
               children: [
@@ -233,7 +233,7 @@ void main() {
       addTearDown(controller.dispose);
       return tester.pumpWidget(
         _app(
-          LazyTextFieldControllerScope(
+          LazyTextFieldScope(
             controller: controller,
             child: SizedBox(
               width: 200,

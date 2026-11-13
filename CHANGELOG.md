@@ -15,11 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   page once the text reaches its top or bottom. The default `true` keeps
   Flutter's behavior.
 - Configurable editor keys for `StatefulLazyTextField` and
-  `ScopedLazyTextField`: `LazyTextFieldShortcuts` sets them for every field
-  below it, and a field's `shortcuts` parameter for that field.
+  `ScopedLazyTextField`: `LazyTextFieldScope(shortcuts: ...)` sets them for
+  every field below it, and a field's `shortcuts` parameter for that field.
   `LazyTextFieldAction` is `save` or `cancel`; keys are Flutter
   `ShortcutActivator`s. Leave a key out of the map to turn it off.
-  `LazyTextFieldShortcuts.defaults` is the default set.
+  `LazyTextFieldScope.defaultShortcuts` is the default set.
 - For custom cells on `LazyTextFieldEditController`:
   - `beginEditRequest()` / `isLatestEditRequest()`: check after an
     asynchronous wait that no other cell started editing meanwhile.
@@ -38,8 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   does it after a pause in typing. `loadDrafts()` brings the text back as a
   restored draft after a restart.
 - Draft identity: a draft can belong to its record instead of its cell.
-  Name the table once (`LazyTextFieldControllerScope.tableId`), the row once
-  per row (`LazyTextFieldRowScope(rowId:, version:)`, or the cell's `rowId`),
+  Name the table once (`LazyTextFieldScope(tableId: ...)`), the row once
+  per row (`LazyTextFieldScope.row(rowId:, version:)`, or the cell's `rowId`),
   and the field on each cell (`ScopedLazyTextField.fieldId`). The draft key
   is then a `LazyTextFieldDraftId(table, row, field)`; `draftKey` can also
   set one directly. The draft follows the record when rows are sorted,
@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ids. An editor open while its position-based cell is given another
   record keeps its text as a draft for the record it was opened on.
 - The record's version (for example its `updatedAt`), from
-  `LazyTextFieldRowScope.version` or `ScopedLazyTextField.version`, kept as
+  `LazyTextFieldScope.row` or `ScopedLazyTextField.version`, kept as
   `LazyTextFieldDraft.baseVersion`: the version the change started from.
   Also on `LazyTextFieldUnsavedChange`, and as `version:` on
   `startEditing`, `holdDraft`, `enqueue`, and `trackDraft` for custom
@@ -83,6 +83,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`LazyTextFieldControllerScope` is now `LazyTextFieldScope`**, the one
+  scope widget of the package: `LazyTextFieldScope(controller:, tableId:,
+  shortcuts:, child:)` and `LazyTextFieldScope.row(rowId:, version:,
+  child:)`. The old name still compiles, deprecated. Scopes nest: what a
+  scope leaves out comes from the scope above, so a scope without a
+  `controller` inside another one now uses that one's controller instead of
+  creating its own.
 - **A `draftStore` stores only drafts that say which record they belong
   to**: a `LazyTextFieldDraftId` key with a table, row, and field, and a
   version. Drafts with a `String` key (the 3.0.0 rule) or without a version
@@ -91,7 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   record.
 - `ScopedLazyTextField.rowKey` is now `rowId`: the same row id is the save
   lane under `perRow` and part of the draft id. It defaults to the nearest
-  `LazyTextFieldRowScope.rowId`.
+  `LazyTextFieldScope.row`.
 - `LazyTextFieldStoredDraft` has `id` and `baseVersion`; `key` is now
   `id.storeKey` (`'table/row/field'`). The JSON has `table`, `row`, `field`,
   and `baseVersion` instead of `key`.

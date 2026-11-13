@@ -42,9 +42,7 @@ void main() {
   }
 
   LazyTextFieldEditController controllerOf(WidgetTester tester) =>
-      LazyTextFieldControllerScope.of(
-        tester.element(find.byType(ListView).at(1)),
-      );
+      LazyTextFieldScope.of(tester.element(find.byType(ListView).at(1)));
 
   LazyTextFieldDraft? draft(WidgetTester tester, int row, Field field) =>
       controllerOf(tester).draftFor(draftIdOf(row, field));

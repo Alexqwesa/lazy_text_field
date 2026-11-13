@@ -43,7 +43,7 @@ void main() {
       home: Scaffold(
         body: Align(
           alignment: Alignment.topLeft,
-          child: LazyTextFieldControllerScope(
+          child: LazyTextFieldScope(
             controller: controller,
             child: Column(
               children: [

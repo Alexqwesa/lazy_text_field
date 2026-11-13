@@ -66,7 +66,7 @@ void main() {
         home: Scaffold(
           body: Align(
             alignment: Alignment.topLeft,
-            child: LazyTextFieldControllerScope(
+            child: LazyTextFieldScope(
               controller: controller,
               child: ValueListenableBuilder(
                 valueListenable: sources,
@@ -477,10 +477,10 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: LazyTextFieldControllerScope(
+            body: LazyTextFieldScope(
               child: Builder(
                 builder: (context) {
-                  scoped = LazyTextFieldControllerScope.of(context);
+                  scoped = LazyTextFieldScope.of(context);
                   return SizedBox(
                     width: 300,
                     child: ScopedLazyTextField(

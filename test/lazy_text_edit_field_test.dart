@@ -722,7 +722,7 @@ void main() {
   testWidgets('wrapper fields forward textAlignVertical', (tester) async {
     await tester.pumpWidget(
       _TestApp(
-        child: LazyTextFieldControllerScope(
+        child: LazyTextFieldScope(
           child: Column(
             children: [
               StatefulLazyTextField(
@@ -760,7 +760,7 @@ void main() {
 
       await tester.pumpWidget(
         _TestApp(
-          child: LazyTextFieldControllerScope(
+          child: LazyTextFieldScope(
             child: Column(
               children: [
                 SizedBox(

@@ -208,7 +208,7 @@ void main() {
 
       await tester.pumpWidget(
         _LifecycleApp(
-          child: LazyTextFieldControllerScope(
+          child: LazyTextFieldScope(
             controller: editController,
             child: Column(
               children: [
@@ -270,7 +270,7 @@ void main() {
 
         await tester.pumpWidget(
           _LifecycleApp(
-            child: LazyTextFieldControllerScope(
+            child: LazyTextFieldScope(
               controller: editController,
               child: Column(
                 children: [
@@ -339,7 +339,7 @@ void main() {
 
         await tester.pumpWidget(
           _LifecycleApp(
-            child: LazyTextFieldControllerScope(
+            child: LazyTextFieldScope(
               controller: editController,
               child: StatefulBuilder(
                 builder: (context, setState) {
@@ -395,7 +395,7 @@ void main() {
 
         await tester.pumpWidget(
           _LifecycleApp(
-            child: LazyTextFieldControllerScope(
+            child: LazyTextFieldScope(
               controller: editController,
               child: StatefulBuilder(
                 builder: (context, setState) {

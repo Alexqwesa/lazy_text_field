@@ -272,7 +272,7 @@ void main() {
         home: Scaffold(
           body: Align(
             alignment: Alignment.topLeft,
-            child: LazyTextFieldControllerScope(
+            child: LazyTextFieldScope(
               child: SizedBox(
                 width: 200,
                 child: ScopedLazyTextField(

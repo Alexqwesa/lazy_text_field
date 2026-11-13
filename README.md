@@ -61,7 +61,7 @@ import 'package:lazy_text_field/lazy_text_field.dart';
 |--------------------------------------------------------|-------------------------------------|
 | `LazyTextField`                                        | You own controller and focus state  |
 | `StatefulLazyTextField`                                | The cell can own its edit lifecycle |
-| `LazyTextFieldControllerScope` + `ScopedLazyTextField` | Many cells share one edit manager   |
+| `LazyTextFieldScope` + `ScopedLazyTextField` | Many cells share one edit manager   |
 
 ## Usage
 
@@ -102,24 +102,24 @@ In an open `StatefulLazyTextField` or `ScopedLazyTextField` editor:
 | Escape | cancel: close without saving (a scoped cell also discards its unsaved or failed draft) |
 | Enter in a `singleLine` field | save (always on) |
 
-Change them for every field below a `LazyTextFieldShortcuts`, or for one
-field with its `shortcuts` parameter. Leave a key out of the map to turn it
-off:
+Change them for every field below a `LazyTextFieldScope` (its `shortcuts`),
+or for one field with its `shortcuts` parameter. Leave a key out of the map
+to turn it off:
 
 ```dart
-LazyTextFieldShortcuts(
-  shortcuts: {
-    // Escape is left to the surrounding dialog.
-    LazyTextFieldShortcuts.controlS: LazyTextFieldAction.save,
-    LazyTextFieldShortcuts.metaS: LazyTextFieldAction.save,
-    const SingleActivator(LogicalKeyboardKey.f2): LazyTextFieldAction.cancel,
-  },
-  child: grid,
-)
+// Escape is left to the surrounding dialog; F2 cancels instead.
+final shortcuts = Map.of(LazyTextFieldScope.defaultShortcuts)
+  ..remove(const SingleActivator(LogicalKeyboardKey.escape))
+  ..[const SingleActivator(LogicalKeyboardKey.f2)] = LazyTextFieldAction.cancel;
+
+LazyTextFieldScope(shortcuts: shortcuts, child: grid);
 ```
 
 The field's focus node sees keys before a `Shortcuts` widget above it, so a
-`Shortcuts` widget cannot change these keys; use `LazyTextFieldShortcuts`.
+`Shortcuts` widget cannot change these keys; use the scope's `shortcuts`.
+A `LazyTextFieldScope` that only sets `shortcuts` works for
+`StatefulLazyTextField` too; inside a grid's scope it keeps the grid's
+controller.
 
 ### Switching between scoped cells
 
@@ -160,7 +160,7 @@ of each committed value and shows it after the editor closes:
   in that cell, or `clearDraft` is called.
 
 ```dart
-LazyTextFieldControllerScope(child: grid); // saves one at a time
+LazyTextFieldScope(child: grid); // saves one at a time
 
 // In a cell:
 ScopedLazyTextField(
@@ -172,7 +172,7 @@ ScopedLazyTextField(
 );
 
 // Status for your own decoration (rebuilds when drafts change):
-final status = LazyTextFieldControllerScope.maybeOf(context)
+final status = LazyTextFieldScope.maybeOf(context)
     ?.draftFor('${item.id}/name')
     ?.status;
 ```
@@ -202,7 +202,7 @@ example a row version). Pass `saveOrder` to your own
 | `saveOrder`                     | Behavior                                                                                                          |
 |---------------------------------|-------------------------------------------------------------------------------------------------------------------|
 | `sequential` (default)          | One save at a time, in queue order.                                                                               |
-| `perRow`                        | Saves with the same `rowId` (from the cell or a `LazyTextFieldRowScope`) run in order; different rows run in parallel. Cells without a row share a queue. |
+| `perRow`                        | Saves with the same `rowId` (from the cell or a `LazyTextFieldScope.row`) run in order; different rows run in parallel. Cells without a row share a queue. |
 
 In both orders, **saves of the same draft key never overlap**: a newer value
 is sent only after the older save finished, so the older one cannot land
@@ -327,14 +327,14 @@ written to the store. Name the table once on the scope, the row and its
 version once per row, and the field on each cell:
 
 ```dart
-LazyTextFieldControllerScope(
+LazyTextFieldScope(
   controller: editController,
   tableId: 'orders',                          // table, collection, or type
   child: ListView.builder(
     itemCount: orders.length,
     itemBuilder: (context, i) {
       final order = orders[i];
-      return LazyTextFieldRowScope(
+      return LazyTextFieldScope.row(
         rowId: order.id,                      // the record's id, not i
         version: order.updatedAt.toIso8601String(), // or a revision, ETag
         child: Row(
@@ -359,8 +359,9 @@ LazyTextFieldControllerScope(
 - The cell's draft key is then
   `LazyTextFieldDraftId(table: 'orders', row: '42', field: 'name')`. A cell's
   own `rowId` and `version` win over the row scope's, so cells without a row
-  scope can give them directly. A nested `LazyTextFieldControllerScope` with
-  the same controller and another `tableId` covers a second table.
+  scope can give them directly. A nested `LazyTextFieldScope(tableId: ...)`
+  covers a second table with the same controller (a scope without a
+  `controller` uses the one above).
 - `draftKey: LazyTextFieldDraftId(...)` on a cell sets the id directly, for
   a cell that cannot use the scopes (it still needs a `version`).
 - A draft is stored only with a `LazyTextFieldDraftId` key whose table, row,
@@ -723,6 +724,9 @@ ScopedLazyTextField(
 
 ## Migrating from 2.x
 
+`LazyTextFieldControllerScope` is now `LazyTextFieldScope` (same arguments,
+plus `tableId` and `shortcuts`). The old name still compiles, deprecated.
+
 Code that uses only `LazyTextField` or `StatefulLazyTextField` needs no
 changes. 3.0 is a major version because `ScopedLazyTextField` with a
 `LazyTextFieldEditController` now keeps text that 2.x dropped, and saves in
@@ -753,7 +757,7 @@ behaviors:
    different cells do not overlap either: a submit waits for earlier saves,
    and its editor stays open until then. If your rows are independent and
    the server is slow, use `saveOrder: LazyTextFieldSaveOrder.perRow` and
-   give cells a `rowId` (or a `LazyTextFieldRowScope`). Remove your own "latest save wins" or "save in
+   give cells a `rowId` (or a `LazyTextFieldScope.row`). Remove your own "latest save wins" or "save in
    flight" guards; the queue does this.
 4. **`onSaved` runs after every successful save,** including saves on
    switch, from `saveDrafts()`, and after the cell left the tree. Update
