@@ -48,13 +48,20 @@ their text goes into the batch) and waits for running saves; trust only
 during the save). `onSaved` fires for
 every successful cell save, even after the cell left the tree, so do not use
 the cell's context in it. To survive restarts, pass a
-`LazyTextFieldDraftStore` (for example a Hive box) as `draftStore`, use
-String draft keys that are unique and stable, call `loadDrafts()` at
-startup, and await `whenDraftsStored()` (false if writes keep failing) before
-telling the user their changes are kept. Restored drafts
+`LazyTextFieldDraftStore` (for example a Hive box) as `draftStore`, set
+`tableId` on the `LazyTextFieldControllerScope`, wrap each row in
+`LazyTextFieldRowScope(rowId: record.id, version: record.updatedAt
+.toIso8601String())`, and give each cell a `fieldId` (a cell's own `rowId` /
+`version` work without a row scope; `draftKey: LazyTextFieldDraftId(...)`
+overrides all of it). Call `loadDrafts()` at startup (`where:` when
+controllers share a store), and await `whenDraftsStored()` (false if writes keep failing or a
+draft lacks an id or version) before telling the user their changes are
+kept. Without the id and version a draft is never written to the store, only
+reported to `FlutterError`. Use the record id, never a list index, as
+`rowId`. Restored drafts
 (`draft.restored`) are saved only when the user commits them from their cell
 or by `saveDrafts()`, never by a cell switch; check them against the server
-(`draft.baseText`) before offering to save. Open editors are not drafts: use
+(`draft.baseVersion` or `draft.baseText`) before offering to save. Open editors are not drafts: use
 `unsavedChanges()` / `hasUnsavedChanges` for "unsaved changes" prompts, and
 `storeOpenEdits()` (on app pause) or `storeOpenEditsAfter` so typed text
 survives the app being killed.
@@ -73,7 +80,8 @@ own draft map, save queue, or "return false and close later" logic:
   to style pending/saved/failed cells.
 - All saves (`onCommit`, `onSave`, `saveDrafts`, batches) share one queue.
   `saveOrder: LazyTextFieldSaveOrder.sequential` (default) never overlaps
-  saves; `perRow` with `rowKey` runs different rows in parallel. Saves of one
+  saves; `perRow` runs different rows in parallel (by the cell's `rowId` or
+  its `LazyTextFieldRowScope`). Saves of one
   draft key never overlap in either order, so do not add your own
   "latest save wins" guards.
 - `onCommit` runs when its queue turn comes; compute request state such as

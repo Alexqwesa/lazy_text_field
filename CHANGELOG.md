@@ -37,6 +37,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for example when the app goes to the background; `storeOpenEditsAfter`
   does it after a pause in typing. `loadDrafts()` brings the text back as a
   restored draft after a restart.
+- Draft identity: a draft can belong to its record instead of its cell.
+  Name the table once (`LazyTextFieldControllerScope.tableId`), the row once
+  per row (`LazyTextFieldRowScope(rowId:, version:)`, or the cell's `rowId`),
+  and the field on each cell (`ScopedLazyTextField.fieldId`). The draft key
+  is then a `LazyTextFieldDraftId(table, row, field)`; `draftKey` can also
+  set one directly. The draft follows the record when rows are sorted,
+  filtered, or reloaded, two tables never share one, and a batch gets the
+  ids. An editor open while its position-based cell is given another
+  record keeps its text as a draft for the record it was opened on.
+- The record's version (for example its `updatedAt`), from
+  `LazyTextFieldRowScope.version` or `ScopedLazyTextField.version`, kept as
+  `LazyTextFieldDraft.baseVersion`: the version the change started from.
+  Also on `LazyTextFieldUnsavedChange`, and as `version:` on
+  `startEditing`, `holdDraft`, `enqueue`, and `trackDraft` for custom
+  cells.
+- `loadDrafts(where:)`: load only some drafts, for controllers that share
+  one store.
 
 ### Fixed
 
@@ -58,13 +75,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   value even if it had changed while the app was closed. Restored drafts are
   now saved only when the user commits one from its cell, or by
   `saveDrafts()`.
-- With a `draftStore`, a non-`String` draft key failed an assert in debug
-  builds and was skipped silently in release. It is now reported to
-  `FlutterError` in every build, the draft stays in memory only, and
-  `whenDraftsStored()` returns false while it exists.
+- With a `draftStore`, a draft the store could not hold failed an assert in
+  debug builds and was skipped silently in release. It is now reported to
+  `FlutterError` in every build (see below for which drafts), the draft
+  stays in memory only, and `whenDraftsStored()` returns false while it
+  exists.
 
 ### Changed
 
+- **A `draftStore` stores only drafts that say which record they belong
+  to**: a `LazyTextFieldDraftId` key with a table, row, and field, and a
+  version. Drafts with a `String` key (the 3.0.0 rule) or without a version
+  are no longer written; set `tableId`, a row scope (or `rowId` and
+  `version`), and `fieldId`. This keeps a restored draft out of the wrong
+  record.
+- `ScopedLazyTextField.rowKey` is now `rowId`: the same row id is the save
+  lane under `perRow` and part of the draft id. It defaults to the nearest
+  `LazyTextFieldRowScope.rowId`.
+- `LazyTextFieldStoredDraft` has `id` and `baseVersion`; `key` is now
+  `id.storeKey` (`'table/row/field'`). The JSON has `table`, `row`, `field`,
+  and `baseVersion` instead of `key`.
+- `draftStoreErrors` is keyed by draft key (`Map<Object, Object>`).
 - Cmd+S and Cmd+Enter (macOS) now save, like Ctrl+S and Ctrl+Enter.
 - Shortcuts match their modifiers exactly: Ctrl+Shift+S no longer saves, and
   Escape with a modifier no longer cancels.

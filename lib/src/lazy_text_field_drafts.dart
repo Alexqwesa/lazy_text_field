@@ -88,8 +88,9 @@ enum LazyTextFieldSaveOrder {
   /// Saves with the same `rowKey` run one at a time, in order; saves for
   /// different rows run in parallel.
   ///
-  /// Use when rows are independent records. Cells without a `rowKey` share
-  /// one queue and still save one at a time.
+  /// Use when rows are independent records. A cell without a `rowKey` uses
+  /// the table and row of its [LazyTextFieldDraftId] draft key; cells with
+  /// neither share one queue and still save one at a time.
   perRow,
 }
 
@@ -105,12 +106,75 @@ enum LazyTextFieldSubmitClose {
   immediately,
 }
 
+/// The record field a draft belongs to: [field] of the row with id [row] in
+/// [table].
+///
+/// A `ScopedLazyTextField` makes its draft key from the scopes: the
+/// `tableId` of its `LazyTextFieldControllerScope`, the `rowId` of its
+/// `LazyTextFieldRowScope` (or its own), and its `fieldId`. Pass an id as
+/// `ScopedLazyTextField.draftKey` only for a cell that cannot use them.
+///
+/// A [LazyTextFieldDraftStore] requires an id and a version: the draft is
+/// stored under the id, so after a restart it goes back to the same record,
+/// whichever cell shows that record now, and two tables with the same row
+/// ids never share a draft.
+///
+/// Ids are equal when all three parts are. A batch
+/// ([LazyTextFieldBatchCommit]) receives them as keys. A custom cell that
+/// keys a draft by an id without a `rowKey` saves in one queue per row under
+/// [LazyTextFieldSaveOrder.perRow].
+@immutable
+class LazyTextFieldDraftId {
+  /// Creates a draft id. A [LazyTextFieldDraftStore] needs every part to be
+  /// non-empty.
+  const LazyTextFieldDraftId({
+    required this.table,
+    required this.row,
+    required this.field,
+  });
+
+  /// The table, collection, or record type, for example `'tasks'`.
+  final String table;
+
+  /// The record's id within [table], as a string, for example
+  /// `'${task.id}'`. Not its position in a list: the id must stay with the
+  /// record when rows are sorted, filtered, or reloaded.
+  final String row;
+
+  /// The field within the record, for example `'title'`.
+  final String field;
+
+  /// Whether [table], [row], and [field] are all non-empty.
+  bool get isComplete => table.isNotEmpty && row.isNotEmpty && field.isNotEmpty;
+
+  /// The key of this draft in a [LazyTextFieldDraftStore]: `table/row/field`,
+  /// each part URI-encoded so that a `/` inside a part cannot make two ids
+  /// look the same.
+  String get storeKey =>
+      '${Uri.encodeComponent(table)}/${Uri.encodeComponent(row)}/'
+      '${Uri.encodeComponent(field)}';
+
+  @override
+  bool operator ==(Object other) =>
+      other is LazyTextFieldDraftId &&
+      other.table == table &&
+      other.row == row &&
+      other.field == field;
+
+  @override
+  int get hashCode => Object.hash(table, row, field);
+
+  @override
+  String toString() => 'LazyTextFieldDraftId($table, $row, $field)';
+}
+
 /// A value kept by a [LazyTextFieldEditController] after its editor closed.
 @immutable
 class LazyTextFieldDraft {
   const LazyTextFieldDraft._({
     required this.value,
     required this.baseText,
+    required this.baseVersion,
     required this.status,
     required Set<String> staleSources,
     this.error,
@@ -123,6 +187,12 @@ class LazyTextFieldDraft {
   /// The source text the cell displayed when the first draft for this key
   /// was kept.
   final String baseText;
+
+  /// The record's version (the cell's `version`, for example its
+  /// `updatedAt`) when the first draft for this key was kept; null if the
+  /// cell gave none. Goes with [baseText]: the text and version the change
+  /// started from.
+  final String? baseVersion;
 
   /// Save state.
   final LazyTextFieldDraftStatus status;
@@ -151,6 +221,7 @@ class LazyTextFieldDraft {
   }) => LazyTextFieldDraft._(
     value: value,
     baseText: baseText,
+    baseVersion: baseVersion,
     status: status,
     staleSources: _staleSources,
     error: error,
@@ -214,11 +285,13 @@ class LazyTextFieldUnsavedChange {
     required this.key,
     required this.value,
     required this.baseText,
+    this.baseVersion,
     this.draft,
     this.cellId,
   });
 
-  /// The draft key (`draftKey`, default `cellId`).
+  /// The draft key (`draftKey`, default `cellId`); a [LazyTextFieldDraftId]
+  /// says which record and field the change belongs to.
   final Object key;
 
   /// The text not saved yet: the open editor's text while [isEditing],
@@ -228,6 +301,10 @@ class LazyTextFieldUnsavedChange {
   /// The text before the change: what the cell showed when the user started
   /// changing it.
   final String baseText;
+
+  /// The record's version when the user started changing it (see
+  /// [LazyTextFieldDraft.baseVersion]); null if the cell gave none.
+  final String? baseVersion;
 
   /// The draft for [key], if any; null when the text is only in an open
   /// editor. Its [LazyTextFieldDraft.status] says whether it is unsaved,
@@ -254,21 +331,30 @@ class LazyTextFieldUnsavedChange {
 class LazyTextFieldStoredDraft {
   /// Creates a stored draft.
   const LazyTextFieldStoredDraft({
-    required this.key,
+    required this.id,
     required this.value,
     required this.baseText,
+    required this.baseVersion,
   });
 
   /// Rebuilds a stored draft from [toJson] output.
   factory LazyTextFieldStoredDraft.fromJson(Map<String, Object?> json) =>
       LazyTextFieldStoredDraft(
-        key: json['key']! as String,
+        id: LazyTextFieldDraftId(
+          table: json['table']! as String,
+          row: json['row']! as String,
+          field: json['field']! as String,
+        ),
         value: json['value']! as String,
         baseText: json['baseText']! as String,
+        baseVersion: json['baseVersion']! as String,
       );
 
-  /// The draft key; unique within the store and stable across restarts.
-  final String key;
+  /// The record field this draft belongs to.
+  final LazyTextFieldDraftId id;
+
+  /// The key to store this draft under: [LazyTextFieldDraftId.storeKey].
+  String get key => id.storeKey;
 
   /// The unsaved text.
   final String value;
@@ -276,31 +362,48 @@ class LazyTextFieldStoredDraft {
   /// The source text the cell showed before the draft.
   final String baseText;
 
+  /// The record's version the draft started from
+  /// ([LazyTextFieldDraft.baseVersion]).
+  final String baseVersion;
+
   /// A JSON-compatible map, for stores such as Hive or shared preferences.
   Map<String, Object?> toJson() => <String, Object?>{
-    'key': key,
+    'table': id.table,
+    'row': id.row,
+    'field': id.field,
     'value': value,
     'baseText': baseText,
+    'baseVersion': baseVersion,
   };
 
   @override
   bool operator ==(Object other) =>
       other is LazyTextFieldStoredDraft &&
-      other.key == key &&
+      other.id == id &&
       other.value == value &&
-      other.baseText == baseText;
+      other.baseText == baseText &&
+      other.baseVersion == baseVersion;
 
   @override
-  int get hashCode => Object.hash(key, value, baseText);
+  int get hashCode => Object.hash(id, value, baseText, baseVersion);
+
+  @override
+  String toString() =>
+      'LazyTextFieldStoredDraft($id, ${value.length} chars, '
+      'baseVersion: $baseVersion)';
 }
 
 /// Local storage for drafts that are not saved yet, so they survive an app
 /// restart (for example a Hive box).
 ///
 /// The controller calls [put] when a draft becomes unsaved, pending, or
-/// failed, and [delete] when it is saved or discarded. Draft keys must be
-/// [String]s that are unique within the store and stable across restarts.
-/// Load them back with [LazyTextFieldEditController.loadDrafts].
+/// failed, and [delete] when it is saved or discarded. Load them back with
+/// [LazyTextFieldEditController.loadDrafts].
+///
+/// Only drafts that say which record they belong to are stored: their key is
+/// a complete [LazyTextFieldDraftId] and they have a version
+/// ([LazyTextFieldDraft.baseVersion]). Any other draft is kept in memory
+/// only and reported to [FlutterError] once.
 abstract interface class LazyTextFieldDraftStore {
   /// Returns every stored draft.
   FutureOr<Iterable<LazyTextFieldStoredDraft>> load();
@@ -308,7 +411,8 @@ abstract interface class LazyTextFieldDraftStore {
   /// Inserts or replaces the draft with [LazyTextFieldStoredDraft.key].
   FutureOr<void> put(LazyTextFieldStoredDraft draft);
 
-  /// Removes the draft with [key], if stored.
+  /// Removes the draft stored under [key] ([LazyTextFieldStoredDraft.key]),
+  /// if any.
   FutureOr<void> delete(String key);
 }
 
@@ -365,20 +469,22 @@ class LazyTextFieldDraftQueue {
       <Object, LazyTextFieldDraft>{};
   final Map<Object, LazyTextFieldDraftSaver> _savers =
       <Object, LazyTextFieldDraftSaver>{};
-  final Map<String, LazyTextFieldStoredDraft> _stored =
-      <String, LazyTextFieldStoredDraft>{};
+  // What the store holds, as far as this queue knows, by draft key.
+  final Map<Object, LazyTextFieldStoredDraft> _stored =
+      <Object, LazyTextFieldStoredDraft>{};
   // The latest queued save of each key, until it finishes.
   final Map<Object, _QueuedSave> _inFlight = <Object, _QueuedSave>{};
   // The last job of each lane: a key, a row, or the whole queue.
   final Map<Object, Future<void>> _tails = <Object, Future<void>>{};
   // Store writes run one at a time, in order.
   Future<void> _storeTail = Future<void>.value();
-  final Map<String, Object> _storeErrors = <String, Object>{};
-  // Kept drafts whose key is not a String, so the store cannot hold them.
+  final Map<Object, Object> _storeErrors = <Object, Object>{};
+  // Kept drafts the store cannot hold: no complete LazyTextFieldDraftId key
+  // or no version.
   final Set<Object> _unstorable = <Object>{};
   // Text of open editors written to the store (storeOpen); it wins over the
   // key's draft until the editor closes.
-  final Map<Object, (String, String)> _openTexts = <Object, (String, String)>{};
+  final Map<Object, _OpenText> _openTexts = <Object, _OpenText>{};
   final List<Completer<void>> _settledWaiters = <Completer<void>>[];
   int _pendingSaves = 0;
   int _savedSinceSettle = 0;
@@ -436,6 +542,7 @@ class LazyTextFieldDraftQueue {
     required String source,
     required String value,
     required LazyTextFieldDraftSaver saver,
+    String? version,
     bool notify = true,
   }) {
     final previous = _drafts[key];
@@ -444,7 +551,7 @@ class LazyTextFieldDraftQueue {
       return;
     }
     _savers[key] = saver;
-    _newDraft(key, source, value, LazyTextFieldDraftStatus.unsaved);
+    _newDraft(key, source, value, version, LazyTextFieldDraftStatus.unsaved);
     if (notify) _notify();
   }
 
@@ -588,11 +695,13 @@ class LazyTextFieldDraftQueue {
     required String value,
     required LazyTextFieldCommit commit,
     Object? rowKey,
+    String? version,
     bool notify = true,
   }) => _saveDraft(
     key: key,
     source: source,
     value: value,
+    version: version,
     rowKey: rowKey,
     notify: notify,
     save: () async {
@@ -610,11 +719,13 @@ class LazyTextFieldDraftQueue {
     required String value,
     required Future<bool> Function() save,
     Object? rowKey,
+    String? version,
     bool notify = true,
   }) => _saveDraft(
     key: key,
     source: source,
     value: value,
+    version: version,
     rowKey: rowKey,
     notify: notify,
     save: save,
@@ -639,6 +750,7 @@ class LazyTextFieldDraftQueue {
     required Object key,
     required String source,
     required String value,
+    required String? version,
     required Object? rowKey,
     required bool notify,
     required Future<bool> Function() save,
@@ -655,6 +767,7 @@ class LazyTextFieldDraftQueue {
       key,
       source,
       value,
+      version,
       LazyTextFieldDraftStatus.pending,
     );
     final job = _schedule(key: key, value: value, rowKey: rowKey, save: save);
@@ -688,7 +801,7 @@ class LazyTextFieldDraftQueue {
       [
         (#key, key),
         if (saveOrder == LazyTextFieldSaveOrder.perRow)
-          (#row, rowKey)
+          (#row, rowKey ?? _rowOf(key))
         else
           #queue,
       ],
@@ -743,8 +856,9 @@ class LazyTextFieldDraftQueue {
   }
 
   /// Restores the drafts in [store] that are not in memory as unsaved
-  /// drafts; returns how many were restored.
-  Future<int> load() async {
+  /// drafts, keyed by their [LazyTextFieldDraftId]; returns how many were
+  /// restored. With [where], only drafts whose id passes it are loaded.
+  Future<int> load({bool Function(LazyTextFieldDraftId id)? where}) async {
     final store = this.store;
     if (store == null) return 0;
     // Writes queued before the load land first.
@@ -752,11 +866,14 @@ class LazyTextFieldDraftQueue {
     final stored = await store.load();
     var restored = 0;
     for (final record in stored) {
-      _stored[record.key] = record;
-      if (_drafts.containsKey(record.key)) continue;
-      _drafts[record.key] = LazyTextFieldDraft._(
+      final key = record.id;
+      if (where != null && !where(key)) continue;
+      _stored[key] = record;
+      if (_drafts.containsKey(key)) continue;
+      _drafts[key] = LazyTextFieldDraft._(
         value: record.value,
         baseText: record.baseText,
+        baseVersion: record.baseVersion,
         status: LazyTextFieldDraftStatus.unsaved,
         staleSources: {record.baseText}..remove(record.value),
         restored: true,
@@ -771,6 +888,7 @@ class LazyTextFieldDraftQueue {
     Object key,
     String source,
     String value,
+    String? version,
     LazyTextFieldDraftStatus status,
   ) {
     final previous = _drafts[key];
@@ -781,7 +899,9 @@ class LazyTextFieldDraftQueue {
     }..remove(value);
     final draft = LazyTextFieldDraft._(
       value: value,
+      // Text and version stay those the first draft started from.
       baseText: previous?.baseText ?? source,
+      baseVersion: previous != null ? previous.baseVersion : version,
       status: status,
       staleSources: stale,
       // Kept again unchanged (its cell left the tree): still not committed.
@@ -812,9 +932,14 @@ class LazyTextFieldDraftQueue {
   /// it comes back as a draft if the app is killed before the editor
   /// closes. It is not a draft: nothing is saved. [unstoreOpen] puts the
   /// store back in line with the key's draft.
-  void storeOpen(Object key, String value, String baseText) {
+  void storeOpen(
+    Object key,
+    String value,
+    String baseText,
+    String? baseVersion,
+  ) {
     if (store == null) return;
-    _openTexts[key] = (value, baseText);
+    _openTexts[key] = _OpenText(value, baseText, baseVersion);
     _persist(key, _drafts[key]);
   }
 
@@ -835,19 +960,32 @@ class LazyTextFieldDraftQueue {
     final keep =
         open != null ||
         (draft != null && draft.status != LazyTextFieldDraftStatus.saved);
-    if (key is! String) {
-      // Cannot be stored. Reported once per draft, in release builds too,
+    // After a failed write the stored state is unknown: always write again.
+    final unknown = _storeErrors.containsKey(key);
+    if (!keep) {
+      _unstorable.remove(key);
+      if (key is LazyTextFieldDraftId &&
+          (_stored.remove(key) != null || unknown)) {
+        _write(key, () => store.delete(key.storeKey));
+      }
+      return;
+    }
+    final version = open != null ? open.baseVersion : draft!.baseVersion;
+    final missing = _missingForStore(key, version);
+    if (missing != null) {
+      // Not written at all. Reported once per draft, in release builds too,
       // and whenStored() stays false while the draft is kept.
-      if (!keep) {
-        _unstorable.remove(key);
-      } else if (_unstorable.add(key)) {
+      if (_unstorable.add(key)) {
         _report(
-          ArgumentError.value(
-            key,
-            'draftKey',
-            'A LazyTextFieldDraftStore needs String draft keys, unique within '
-                'the store and stable across restarts; got ${key.runtimeType}. '
-                'This draft is kept in memory only',
+          FlutterError(
+            'Draft $key is kept in memory only: a LazyTextFieldDraftStore '
+            'stores a draft only when it says which record it belongs to, and '
+            'this one has no $missing.\n'
+            'Set tableId on the LazyTextFieldControllerScope, rowId and '
+            "version (for example the row's updatedAt) on a "
+            'LazyTextFieldRowScope around the row or on the cell, and fieldId '
+            'on the cell. Or give the cell draftKey: LazyTextFieldDraftId(...) '
+            'and version.',
           ),
           StackTrace.current,
           'while writing a LazyTextFieldDraftStore',
@@ -855,25 +993,40 @@ class LazyTextFieldDraftQueue {
       }
       return;
     }
-    // After a failed write the stored state is unknown: always write again.
-    final unknown = _storeErrors.containsKey(key);
-    if (keep) {
-      final record = LazyTextFieldStoredDraft(
-        key: key,
-        value: open?.$1 ?? draft!.value,
-        baseText: open?.$2 ?? draft!.baseText,
-      );
-      if (_stored[key] == record && !unknown) return;
-      _stored[key] = record;
-      _write(key, () => store.put(record));
-    } else if (_stored.remove(key) != null || unknown) {
-      _write(key, () => store.delete(key));
-    }
+    _unstorable.remove(key);
+    final record = LazyTextFieldStoredDraft(
+      id: key as LazyTextFieldDraftId,
+      value: open?.value ?? draft!.value,
+      baseText: open?.baseText ?? draft!.baseText,
+      baseVersion: version!,
+    );
+    if (_stored[key] == record && !unknown) return;
+    _stored[key] = record;
+    _write(key, () => store.put(record));
   }
+
+  /// What [key] and [version] lack for the store, or null if nothing.
+  static String? _missingForStore(Object key, String? version) {
+    final missing = <String>[
+      if (key is! LazyTextFieldDraftId)
+        'LazyTextFieldDraftId key (its key is a ${key.runtimeType})'
+      else ...[
+        if (key.table.isEmpty) 'table',
+        if (key.row.isEmpty) 'row',
+        if (key.field.isEmpty) 'field',
+      ],
+      if (version == null || version.isEmpty) 'version',
+    ];
+    return missing.isEmpty ? null : missing.join(', ');
+  }
+
+  /// The per-row save lane of a draft with a [LazyTextFieldDraftId] key.
+  static Object? _rowOf(Object key) =>
+      key is LazyTextFieldDraftId ? (key.table, key.row) : null;
 
   // One chain for all keys, so a put and a later delete of the same key land
   // in that order even when the store would complete them out of order.
-  void _write(String key, FutureOr<void> Function() write) {
+  void _write(Object key, FutureOr<void> Function() write) {
     _storeTail = _storeTail
         .then((_) => write())
         .then<void>(
@@ -885,8 +1038,8 @@ class LazyTextFieldDraftQueue {
         );
   }
 
-  /// Keys whose last store write failed, with the error.
-  Map<String, Object> get storeErrors => Map.unmodifiable(_storeErrors);
+  /// Draft keys whose last store write failed, with the error.
+  Map<Object, Object> get storeErrors => Map.unmodifiable(_storeErrors);
 
   /// Waits for every store write queued so far, retries failed ones once,
   /// and returns whether the store now matches the drafts in memory.
@@ -935,6 +1088,16 @@ class LazyTextFieldDraftQueue {
     _drafts.clear();
     _savers.clear();
   }
+}
+
+/// An open editor's text written to the store by
+/// [LazyTextFieldDraftQueue.storeOpen].
+class _OpenText {
+  const _OpenText(this.value, this.baseText, this.baseVersion);
+
+  final String value;
+  final String baseText;
+  final String? baseVersion;
 }
 
 class _QueuedSave {

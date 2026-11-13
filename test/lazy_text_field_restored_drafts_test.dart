@@ -10,6 +10,9 @@ const _style = TextStyle(
   letterSpacing: 0,
 );
 
+LazyTextFieldDraftId _id(String id) =>
+    LazyTextFieldDraftId(table: 'tasks', row: id, field: 'text');
+
 void main() {
   late List<String> commits;
   late LazyTextFieldEditController controller;
@@ -21,10 +24,11 @@ void main() {
   Future<void> restore() async {
     final store = LazyTextFieldMemoryDraftStore()
       ..put(
-        const LazyTextFieldStoredDraft(
-          key: 'a',
+        LazyTextFieldStoredDraft(
+          id: _id('a'),
           value: 'stale-a',
           baseText: 'old-a',
+          baseVersion: 'v1',
         ),
       );
     controller = LazyTextFieldEditController(draftStore: store);
@@ -49,6 +53,8 @@ void main() {
                     width: 200,
                     child: ScopedLazyTextField(
                       cellId: id,
+                      draftKey: _id(id),
+                      version: 'v1',
                       text: 'server-$id',
                       singleLine: true,
                       style: _style,
@@ -74,7 +80,7 @@ void main() {
     await tester.pump();
   }
 
-  LazyTextFieldDraft? draftA() => controller.draftFor('a');
+  LazyTextFieldDraft? draftA() => controller.draftFor(_id('a'));
 
   testWidgets('loadDrafts marks drafts as restored', (tester) async {
     await restore();

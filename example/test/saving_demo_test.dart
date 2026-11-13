@@ -47,7 +47,7 @@ void main() {
       );
 
   LazyTextFieldDraft? draft(WidgetTester tester, int row, Field field) =>
-      controllerOf(tester).draftFor(cellKey(row, field));
+      controllerOf(tester).draftFor(draftIdOf(row, field));
 
   /// Scrolls like a mouse wheel: unlike a drag, it is not a tap outside the
   /// editor, so it does not submit it.

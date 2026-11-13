@@ -177,16 +177,16 @@ class MockApi extends ChangeNotifier {
     }
   }
 
-  /// One request that saves many fields; [values] are keyed by
-  /// [cellKey]. Returns errors by key (none: the whole batch fails or
-  /// succeeds).
+  /// One request that saves many fields; [values] are keyed by draft id
+  /// ([draftIdOf]), which names the row and field. Returns errors by key
+  /// (none: the whole batch fails or succeeds).
   Future<Map<Object, Object?>> updateBatch(Map<Object, String> values) async {
     final call = _begin('PATCH batch of ${values.length} fields');
     try {
       await Future<void>.delayed(latency);
       _check(call);
       for (final MapEntry(:key, :value) in values.entries) {
-        final (id, field) = parseCellKey(key as String);
+        final (id, field) = parseDraftId(key as LazyTextFieldDraftId);
         _rows.firstWhere((row) => row.id == id)
           ..set(field, value)
           ..version += 1;
@@ -224,9 +224,9 @@ class MockApi extends ChangeNotifier {
   }
 
   /// Another user changes these fields on the server.
-  void editElsewhere(Iterable<String> keys) {
+  void editElsewhere(Iterable<LazyTextFieldDraftId> keys) {
     for (final key in keys) {
-      final (id, field) = parseCellKey(key);
+      final (id, field) = parseDraftId(key);
       final row = _rows.firstWhere((row) => row.id == id);
       final value = row.valueOf(field);
       row
@@ -237,7 +237,7 @@ class MockApi extends ChangeNotifier {
               : '$value (edited by someone else)',
         )
         ..version += 1;
-      log?.call('Someone else changed $key on the server');
+      log?.call('Someone else changed ${cellKey(id, field)} on the server');
     }
     notifyListeners();
   }
@@ -248,14 +248,19 @@ class MockApi extends ChangeNotifier {
   }
 }
 
-/// Draft key, cell id, and store key of a cell: unique and stable, as a
-/// [LazyTextFieldDraftStore] requires.
+/// Cell id of a field: unique among the cells of the controller.
 String cellKey(int rowId, Field field) => 'row$rowId.${field.name}';
 
-(int, Field) parseCellKey(String key) {
-  final [row, field] = key.split('.');
-  return (int.parse(row.substring(3)), Field.values.byName(field));
-}
+/// The table the cells edit: [LazyTextFieldControllerScope.tableId].
+const tasksTable = 'tasks';
+
+/// Draft id of a field, as the cells make it from the scopes: the table,
+/// the row's id ([LazyTextFieldRowScope]), and the cell's `fieldId`.
+LazyTextFieldDraftId draftIdOf(int rowId, Field field) =>
+    LazyTextFieldDraftId(table: tasksTable, row: '$rowId', field: field.name);
+
+(int, Field) parseDraftId(LazyTextFieldDraftId id) =>
+    (int.parse(id.row), Field.values.byName(id.field));
 
 // ---------------------------------------------------------------------------
 // Demo settings
@@ -515,13 +520,14 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
   Future<void> _restartWithServerChanges() async {
     final drafted = [
       for (final MapEntry(:key, value: draft) in _controller.drafts.entries)
-        if (key is String && draft.status != LazyTextFieldDraftStatus.saved)
+        if (key is LazyTextFieldDraftId &&
+            draft.status != LazyTextFieldDraftStatus.saved)
           key,
     ];
     _api.editElsewhere(
       drafted.isNotEmpty
           ? drafted
-          : [cellKey(1, Field.title), cellKey(2, Field.note)],
+          : [draftIdOf(1, Field.title), draftIdOf(2, Field.note)],
     );
     await _restart('Restart, data changed on the server', () {});
   }
@@ -597,6 +603,9 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
   Widget _buildMain(BuildContext context) {
     return LazyTextFieldControllerScope(
       controller: _controller,
+      // With a row scope and a cell's fieldId, each draft knows its record,
+      // as the draft store requires.
+      tableId: tasksTable,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -625,32 +634,42 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
     return Padding(
       key: ValueKey(row.id),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 56,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text('#${row.id}', style: _labelStyle),
-            ),
-          ),
-          Expanded(flex: 2, child: _buildCell(row, Field.title)),
-          const SizedBox(width: 8),
-          Expanded(flex: 3, child: _buildCell(row, Field.note)),
-          SizedBox(
-            width: 48,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text(
-                'v${row.version}',
-                style: _labelStyle,
-                textAlign: TextAlign.end,
-              ),
-            ),
-          ),
-        ],
+      // The record the row's cells edit, and the version their drafts
+      // start from. Also gives each row its own save lane under perRow.
+      child: LazyTextFieldRowScope(
+        rowId: row.id,
+        version: '${row.version}',
+        child: _buildRowCells(row),
       ),
+    );
+  }
+
+  Widget _buildRowCells(ApiRow row) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 56,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text('#${row.id}', style: _labelStyle),
+          ),
+        ),
+        Expanded(flex: 2, child: _buildCell(row, Field.title)),
+        const SizedBox(width: 8),
+        Expanded(flex: 3, child: _buildCell(row, Field.note)),
+        SizedBox(
+          width: 48,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              'v${row.version}',
+              style: _labelStyle,
+              textAlign: TextAlign.end,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -688,6 +707,7 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
 
   Widget _buildCell(ApiRow row, Field field) {
     final key = cellKey(row.id, field);
+    final draftId = draftIdOf(row.id, field);
     final isNote = field == Field.note;
     final style = TextStyle(
       fontSize: _fontSize,
@@ -706,8 +726,7 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
           Expanded(
             child: ScopedLazyTextField(
               cellId: key,
-              draftKey: key,
-              rowKey: row.id,
+              fieldId: field.name,
               text: row.valueOf(field),
               singleLine: !isNote,
               style: style,
@@ -747,7 +766,7 @@ class _SavingDemoScreenState extends State<SavingDemoScreen> {
               },
             ),
           ),
-          _DraftBadge(draftKey: key, source: row.valueOf(field)),
+          _DraftBadge(draftKey: draftId, source: row.valueOf(field)),
         ],
       ),
     );
@@ -790,7 +809,7 @@ String _short(String text) {
 class _DraftBadge extends StatelessWidget {
   const _DraftBadge({required this.draftKey, required this.source});
 
-  final String draftKey;
+  final LazyTextFieldDraftId draftKey;
 
   /// The cell's current value from the server.
   final String source;

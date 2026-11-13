@@ -14,6 +14,7 @@ export 'src/lazy_text_field_edit_controller.dart';
 export 'src/lazy_text_field_keys.dart';
 export 'src/lazy_text_field_layout.dart';
 export 'src/lazy_text_field_metrics.dart';
+export 'src/lazy_text_field_row_scope.dart';
 export 'src/lazy_text_field_shortcuts.dart';
 export 'src/scoped_lazy_text_field.dart';
 export 'src/stateful_lazy_text_field.dart';

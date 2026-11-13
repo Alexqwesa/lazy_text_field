@@ -7,6 +7,7 @@ import 'package:lazy_text_field/src/lazy_text_field_shortcuts.dart';
 import 'package:lazy_text_field/src/lazy_text_field_controller_scope.dart';
 import 'package:lazy_text_field/src/lazy_text_field_drafts.dart';
 import 'package:lazy_text_field/src/lazy_text_field_edit_controller.dart';
+import 'package:lazy_text_field/src/lazy_text_field_row_scope.dart';
 import 'package:lazy_text_field/src/stateful_lazy_text_field.dart';
 
 /// [LazyTextField] cell wired to a shared [LazyTextFieldEditController].
@@ -21,8 +22,10 @@ class ScopedLazyTextField extends StatefulWidget {
     required this.text,
     this.onSave,
     this.onCommit,
+    this.fieldId,
+    this.rowId,
+    this.version,
     this.draftKey,
-    this.rowKey,
     this.closeOnSubmit = LazyTextFieldSubmitClose.afterSave,
     this.errorMessageOf,
     super.key,
@@ -99,16 +102,43 @@ class ScopedLazyTextField extends StatefulWidget {
   /// draft failed (then it retries).
   final LazyTextFieldCommit? onCommit;
 
-  /// Identifies this cell's draft in the [LazyTextFieldEditController].
+  /// The field of the record this cell edits, for example `'title'`.
   ///
-  /// Defaults to [cellId]. Use a shared key when the same value is shown in
-  /// several cells.
-  final Object? draftKey;
+  /// With a table ([LazyTextFieldControllerScope.tableId]) and a row
+  /// ([rowId] or [LazyTextFieldRowScope.rowId]), the cell's draft key is
+  /// `LazyTextFieldDraftId(table: tableId, row: '$rowId', field: fieldId)`:
+  /// the draft belongs to the record, not to the cell, so it follows the
+  /// record when rows are sorted, filtered, or reloaded, and two tables
+  /// never share one. A [LazyTextFieldEditController.draftStore] requires
+  /// it, together with a [version].
+  final String? fieldId;
 
-  /// Row identity for [LazyTextFieldSaveOrder.perRow]; ignored otherwise.
+  /// The id of the record this cell edits; defaults to the nearest
+  /// [LazyTextFieldRowScope.rowId]. Not its position in a list: the id must
+  /// stay with the record when rows are sorted, filtered, or reloaded.
   ///
-  /// Without it, the cell saves in the queue shared by cells without a row.
-  final Object? rowKey;
+  /// Part of the draft key (see [fieldId]), and the cell's save lane under
+  /// [LazyTextFieldSaveOrder.perRow] (ignored by other orders).
+  final Object? rowId;
+
+  /// The version of the record [text] comes from, as a token: for example
+  /// its `updatedAt` (`row.updatedAt.toIso8601String()`), a revision
+  /// number, or an ETag. Defaults to the nearest
+  /// [LazyTextFieldRowScope.version].
+  ///
+  /// Kept with this cell's draft as [LazyTextFieldDraft.baseVersion]: the
+  /// version the change started from. A
+  /// [LazyTextFieldEditController.draftStore] requires it.
+  final String? version;
+
+  /// This cell's draft key, instead of the one made from the scopes and
+  /// [fieldId].
+  ///
+  /// Without it, the key is the [LazyTextFieldDraftId] described at
+  /// [fieldId], or [cellId] when the table, row, or field is missing. Pass a
+  /// [LazyTextFieldDraftId] here for a cell that cannot use the scopes, or
+  /// the same key in cells that show the same value.
+  final Object? draftKey;
 
   /// When an explicit submit (Enter, Ctrl+S, tap outside) closes the editor
   /// with [onCommit].
@@ -234,16 +264,47 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   Future<bool>? _inFlightSave;
   late final LazyTextFieldCommitHandler _commitHandler = _commitOnSwitch;
   late final LazyTextFieldCommitHandler _keepHandler = _keepForBatch;
+  // The draft key, row, and version of this cell, from the widget and its
+  // scopes; updated before every build.
+  _CellDraft? _resolved;
+
+  _CellDraft get _draft => _resolved ?? _CellDraft.of(widget);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _resolveDraft(widget, release: true);
+  }
 
   @override
   void didUpdateWidget(covariant ScopedLazyTextField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.cellId != widget.cellId) {
+    final recycled = oldWidget.cellId != widget.cellId;
+    if (recycled) {
       // A recycled cell: the old cell's text is kept as an unsaved draft.
       // This runs during build, where notifying the scope would mark an
       // ancestor dirty; this cell rebuilds anyway.
       _detachKeyboardHandler();
-      _releaseEditor(oldWidget, notify: false);
+      _releaseEditor(oldWidget, _draft, notify: false);
+      _invalidateEditSession();
+    }
+    _resolveDraft(oldWidget, release: !recycled);
+  }
+
+  /// Updates [_resolved]. If the draft key changed while the cell id did
+  /// not (rows re-sorted under position-based cell ids), the cell now edits
+  /// another record, so its open editor's text is kept for the previous
+  /// one, with [previousConfig]'s text and save callbacks (that record's).
+  void _resolveDraft(
+    ScopedLazyTextField previousConfig, {
+    required bool release,
+  }) {
+    final previous = _resolved;
+    final next = _CellDraft.resolve(context, widget);
+    _resolved = next;
+    if (release && previous != null && previous.key != next.key) {
+      _detachKeyboardHandler();
+      _releaseEditor(previousConfig, previous, notify: false);
       _invalidateEditSession();
     }
   }
@@ -255,19 +316,24 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     // edit resources and keep the text as an unsaved draft, which survives
     // the cell; leaving the tree is not a request to save. Skip notify:
     // InheritedNotifier cannot markNeedsBuild while the tree is locked.
-    _releaseEditor(widget, notify: false);
+    _releaseEditor(widget, _draft, notify: false);
     _invalidateEditSession();
     super.dispose();
   }
 
-  /// Closes [config]'s editor and keeps changed text as an unsaved draft.
-  void _releaseEditor(ScopedLazyTextField config, {required bool notify}) {
+  /// Closes [config]'s editor and keeps changed text as an unsaved draft
+  /// for [cell].
+  void _releaseEditor(
+    ScopedLazyTextField config,
+    _CellDraft cell, {
+    required bool notify,
+  }) {
     final editController = _editController;
     final editor = editController?.controllerFor(config.cellId);
     if (editController == null || editor == null) return;
     final value = editor.text;
-    if (_needsSave(editController, config, value)) {
-      _hold(editController, config, value, notify: false);
+    if (_needsSave(editController, config, cell, value)) {
+      _hold(editController, config, cell, value, notify: false);
     }
     editController.stopEditing(config.cellId, notify: notify);
   }
@@ -277,9 +343,10 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   bool _needsSave(
     LazyTextFieldEditController editController,
     ScopedLazyTextField config,
+    _CellDraft cell,
     String value,
   ) {
-    final key = config.draftKey ?? config.cellId;
+    final key = cell.key;
     final draft = editController.draftFor(key);
     return switch (draft?.status) {
       // Whoever queued this value is already waiting for it.
@@ -295,14 +362,16 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   void _hold(
     LazyTextFieldEditController editController,
     ScopedLazyTextField config,
+    _CellDraft cell,
     String value, {
     required bool notify,
   }) {
     editController.holdDraft(
-      key: config.draftKey ?? config.cellId,
+      key: cell.key,
       source: config.text,
       value: value,
-      saver: _saverFor(editController, config),
+      saver: _saverFor(editController, config, cell),
+      version: cell.version,
       notify: notify,
     );
   }
@@ -311,30 +380,30 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   static LazyTextFieldDraftSaver _saverFor(
     LazyTextFieldEditController editController,
     ScopedLazyTextField config,
+    _CellDraft cell,
   ) {
-    final key = config.draftKey ?? config.cellId;
     if (config.onCommit case final commit?) {
-      final rowKey = config.rowKey;
       return (draft) => editController
           .enqueue(
-            key: key,
+            key: cell.key,
             source: draft.baseText,
             value: draft.value,
             commit: commit,
-            rowKey: rowKey,
+            rowKey: cell.rowId,
+            version: cell.version,
           )
           .then(_afterSave(config.onSaved, draft.value));
     }
     final onSave = config.onSave!;
     final cellId = config.cellId;
-    final rowKey = config.rowKey;
     return (draft) => editController
         .trackDraft(
-          key: key,
+          key: cell.key,
           source: draft.baseText,
           value: draft.value,
           save: () => _runOnSave(onSave, draft.value, cellId),
-          rowKey: rowKey,
+          rowKey: cell.rowId,
+          version: cell.version,
         )
         .then(_afterSave(config.onSaved, draft.value));
   }
@@ -379,7 +448,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       // Lets saveDrafts save a draft kept or restored before this build.
       editController.setDraftSaver(
         _draftKey,
-        _saverFor(editController, widget),
+        _saverFor(editController, widget, _draft),
       );
     }
     final draftError =
@@ -431,7 +500,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   /// The scope's controller, which also holds this cell's draft.
   LazyTextFieldEditController? get _drafts => _editController;
 
-  Object get _draftKey => widget.draftKey ?? widget.cellId;
+  Object get _draftKey => _draft.key;
 
   String _displayText() =>
       _drafts?.displayText(_draftKey, widget.text) ?? widget.text;
@@ -474,6 +543,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       startEditSelection: widget.startEditSelection,
       textOffset: textOffset,
       draftKey: _draftKey,
+      version: _draft.version,
     );
     // Register now: a switch can arrive before the rebuild that would do it.
     editController
@@ -546,7 +616,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       key: key,
       value: value,
       save: () => _runOnSave(onSave, value, cellId),
-      rowKey: widget.rowKey,
+      rowKey: _draft.rowId,
     );
     _saveInFlight = true;
     _inFlightValue = value;
@@ -579,7 +649,7 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     final editController = _editController;
     final editor = editController?.controllerFor(widget.cellId);
     if (editController == null || editor == null) return;
-    _commitClosed(editController, widget, editor, value, notify: true);
+    _commitClosed(editController, widget, _draft, editor, value, notify: true);
   }
 
   /// Called by the controller for `saveDrafts(batch: ...)`: keeps this
@@ -595,8 +665,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
         _inFlightValue == value) {
       return;
     }
-    if (_needsSave(editController, widget, value)) {
-      _hold(editController, widget, value, notify: true);
+    if (_needsSave(editController, widget, _draft, value)) {
+      _hold(editController, widget, _draft, value, notify: true);
     }
   }
 
@@ -607,19 +677,20 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
   void _commitClosed(
     LazyTextFieldEditController editController,
     ScopedLazyTextField config,
+    _CellDraft cell,
     TextEditingController editor,
     String value, {
     required bool notify,
   }) {
-    if (!_needsSave(editController, config, value)) return;
+    if (!_needsSave(editController, config, cell, value)) return;
     final cellId = config.cellId;
-    final key = config.draftKey ?? cellId;
+    final key = cell.key;
 
     final savedCallback = _afterSave(config.onSaved, value);
 
     if (config.onCommit case final commit?) {
       if (editController.saveMode == LazyTextFieldSaveMode.deferred) {
-        _hold(editController, config, value, notify: notify);
+        _hold(editController, config, cell, value, notify: notify);
         return;
       }
       unawaited(
@@ -629,7 +700,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
               source: config.text,
               value: value,
               commit: commit,
-              rowKey: config.rowKey,
+              rowKey: cell.rowId,
+              version: cell.version,
               notify: notify,
             )
             .then(savedCallback),
@@ -650,7 +722,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       source: config.text,
       value: value,
       save: () => _runOnSave(onSave, value, cellId),
-      rowKey: config.rowKey,
+      rowKey: cell.rowId,
+      version: cell.version,
       notify: notify,
     );
     if (!submitted) unawaited(tracked.then(savedCallback));
@@ -691,12 +764,12 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
         draft?.value == value) {
       return;
     }
-    if (!_needsSave(editController, widget, value)) {
+    if (!_needsSave(editController, widget, _draft, value)) {
       editController.stopEditing(cellId);
       return;
     }
     if (editController.saveMode == LazyTextFieldSaveMode.deferred) {
-      _hold(editController, widget, value, notify: true);
+      _hold(editController, widget, _draft, value, notify: true);
       editController.stopEditing(cellId);
       return;
     }
@@ -709,7 +782,8 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
       source: widget.text,
       value: value,
       commit: widget.onCommit!,
-      rowKey: widget.rowKey,
+      rowKey: _draft.rowId,
+      version: _draft.version,
     );
     final closeAfterSave =
         widget.closeOnSubmit == LazyTextFieldSubmitClose.afterSave;
@@ -754,4 +828,38 @@ class _ScopedLazyTextFieldState extends State<ScopedLazyTextField> {
     _inFlightEditor = null;
     _inFlightSave = null;
   }
+}
+
+/// A cell's draft key, row, and version, from the cell and its scopes.
+@immutable
+class _CellDraft {
+  const _CellDraft({required this.key, this.rowId, this.version});
+
+  /// From the cell alone, without scopes.
+  _CellDraft.of(ScopedLazyTextField cell)
+    : key = cell.draftKey ?? cell.cellId,
+      rowId = cell.rowId,
+      version = cell.version;
+
+  /// From the cell, the nearest [LazyTextFieldRowScope], and the table of
+  /// the nearest [LazyTextFieldControllerScope].
+  factory _CellDraft.resolve(BuildContext context, ScopedLazyTextField cell) {
+    final row = LazyTextFieldRowScope.maybeOf(context);
+    final rowId = cell.rowId ?? row?.rowId;
+    final table = LazyTextFieldControllerScope.tableIdOf(context);
+    final field = cell.fieldId;
+    return _CellDraft(
+      key:
+          cell.draftKey ??
+          (table != null && rowId != null && field != null
+              ? LazyTextFieldDraftId(table: table, row: '$rowId', field: field)
+              : cell.cellId),
+      rowId: rowId,
+      version: cell.version ?? row?.version,
+    );
+  }
+
+  final Object key;
+  final Object? rowId;
+  final String? version;
 }

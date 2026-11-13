@@ -10,6 +10,12 @@ const _style = TextStyle(
   letterSpacing: 0,
 );
 
+/// The draft id of cell [id]: field `text` of row [id] in table `tasks`.
+LazyTextFieldDraftId _id(String id) =>
+    LazyTextFieldDraftId(table: 'tasks', row: id, field: 'text');
+
+String _key(String id) => _id(id).storeKey;
+
 void main() {
   late LazyTextFieldEditController controller;
   late LazyTextFieldMemoryDraftStore store;
@@ -46,6 +52,8 @@ void main() {
                     width: 200,
                     child: ScopedLazyTextField(
                       cellId: id,
+                      draftKey: _id(id),
+                      version: 'v1',
                       text: 'old-$id',
                       singleLine: true,
                       style: _style,
@@ -94,9 +102,10 @@ void main() {
 
       await type(tester, 'new-a');
       final change = controller.unsavedChanges().single;
-      expect(change.key, 'a');
+      expect(change.key, _id('a'));
       expect(change.value, 'new-a');
       expect(change.baseText, 'old-a');
+      expect(change.baseVersion, 'v1');
       expect(change.isEditing, isTrue);
       expect(change.cellId, 'a');
       expect(change.status, isNull);
@@ -131,18 +140,21 @@ void main() {
       // Switching closes a; its save fails and leaves a failed draft.
       await open(tester, 'b');
       await tester.pump();
-      expect(controller.draftFor('a')?.status, LazyTextFieldDraftStatus.failed);
+      expect(
+        controller.draftFor(_id('a'))?.status,
+        LazyTextFieldDraftStatus.failed,
+      );
       await type(tester, 'new-b');
 
       final changes = {
         for (final change in controller.unsavedChanges()) change.key: change,
       };
-      expect(changes.keys, unorderedEquals(['a', 'b']));
-      expect(changes['a']!.status, LazyTextFieldDraftStatus.failed);
-      expect(changes['a']!.isEditing, isFalse);
-      expect(changes['a']!.value, 'new-a');
-      expect(changes['b']!.isEditing, isTrue);
-      expect(changes['b']!.status, isNull);
+      expect(changes.keys, unorderedEquals([_id('a'), _id('b')]));
+      expect(changes[_id('a')]!.status, LazyTextFieldDraftStatus.failed);
+      expect(changes[_id('a')]!.isEditing, isFalse);
+      expect(changes[_id('a')]!.value, 'new-a');
+      expect(changes[_id('b')]!.isEditing, isTrue);
+      expect(changes[_id('b')]!.status, isNull);
     });
 
     testWidgets('an editor continuing a draft has its text and the draft', (
@@ -189,9 +201,10 @@ void main() {
 
       controller.storeOpenEdits();
       expect(await controller.whenDraftsStored(), isTrue);
-      expect(store.drafts['a']?.value, 'typed');
-      expect(store.drafts['a']?.baseText, 'old-a');
-      expect(controller.draftFor('a'), isNull);
+      expect(store.drafts[_key('a')]?.value, 'typed');
+      expect(store.drafts[_key('a')]?.baseText, 'old-a');
+      expect(store.drafts[_key('a')]?.baseVersion, 'v1');
+      expect(controller.draftFor(_id('a')), isNull);
       expect(controller.isEditing('a'), isTrue);
     });
 
@@ -208,8 +221,9 @@ void main() {
       final restarted = LazyTextFieldEditController(draftStore: store);
       addTearDown(restarted.dispose);
       expect(await restarted.loadDrafts(), 1);
-      expect(restarted.draftFor('a')?.value, 'typed');
-      expect(restarted.draftFor('a')?.restored, isTrue);
+      expect(restarted.draftFor(_id('a'))?.value, 'typed');
+      expect(restarted.draftFor(_id('a'))?.baseVersion, 'v1');
+      expect(restarted.draftFor(_id('a'))?.restored, isTrue);
     });
 
     testWidgets('Escape removes the stored open text', (tester) async {
@@ -250,7 +264,7 @@ void main() {
       await tester.pump();
 
       expect(await controller.whenDraftsStored(), isTrue);
-      expect(store.drafts['a']?.value, 'typed');
+      expect(store.drafts[_key('a')]?.value, 'typed');
     });
 
     testWidgets('an editor reverted to its start text is removed again', (
@@ -286,7 +300,7 @@ void main() {
 
       await tester.pump(const Duration(milliseconds: 500));
       await controller.whenDraftsStored();
-      expect(store.drafts['a']?.value, 'typed');
+      expect(store.drafts[_key('a')]?.value, 'typed');
     });
   });
 }

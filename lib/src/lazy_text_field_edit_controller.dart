@@ -49,10 +49,15 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// Where unsaved, pending, and failed drafts are written so they survive an
   /// app restart (for example a Hive box); null keeps them in memory only.
   ///
-  /// Requires [String] draft keys that are unique within the store and
-  /// stable across restarts; a draft with another key is reported to
-  /// [FlutterError], kept in memory only, and makes [whenDraftsStored]
-  /// return false. Call [loadDrafts] at startup to restore them.
+  /// A draft is written only when it says which record it belongs to: its
+  /// key is a [LazyTextFieldDraftId] with a table, row, and field, and it
+  /// has a version (for example the row's `updatedAt`). Set `tableId` on the
+  /// [LazyTextFieldControllerScope], `rowId` and `version` on a
+  /// `LazyTextFieldRowScope` (or the cell), and `fieldId` on each cell. A
+  /// draft missing any of them is never written: it is kept in memory only,
+  /// reported to [FlutterError] once (in release builds too), and makes
+  /// [whenDraftsStored] return false while it exists. Call [loadDrafts] at
+  /// startup to restore stored drafts.
   final LazyTextFieldDraftStore? draftStore;
 
   /// How long after the last keystroke the text of open editors is written
@@ -175,6 +180,9 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// first, and in [LazyTextFieldSaveMode.immediate] unsaved drafts are
   /// saved, except the one for [draftKey] (default [cellId]), which this
   /// editor continues, and restored ones ([LazyTextFieldDraft.restored]).
+  ///
+  /// [version] is the record's current version; [storeOpenEdits] writes it
+  /// with the editor's text (see [draftStore]).
   TextEditingController startEditing({
     required String cellId,
     required String initialValue,
@@ -183,6 +191,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
         LazyTextFieldStartEditSelection.end,
     int? textOffset,
     Object? draftKey,
+    String? version,
   }) {
     // Supersedes edit requests still waiting (see beginEditRequest).
     _editRequest++;
@@ -215,7 +224,13 @@ class LazyTextFieldEditController extends ChangeNotifier {
     final focusNode = FocusNode(debugLabel: 'lazy-text-field-$cellId');
     _controllers[cellId] = controller;
     _focusNodes[cellId] = focusNode;
-    _trackOpenEdit(cellId, controller, draftKey ?? cellId, initialValue);
+    _trackOpenEdit(
+      cellId,
+      controller,
+      draftKey ?? cellId,
+      initialValue,
+      version,
+    );
     notifyListeners();
 
     SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -262,6 +277,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
             key: key,
             value: draft.value,
             baseText: draft.baseText,
+            baseVersion: draft.baseVersion,
             draft: draft,
           ),
     };
@@ -274,6 +290,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
         key: edit.key,
         value: text,
         baseText: draft?.baseText ?? edit.baseText,
+        baseVersion: draft != null ? draft.baseVersion : edit.baseVersion,
         draft: draft,
         cellId: cellId,
       );
@@ -317,7 +334,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     for (final MapEntry(key: cellId, value: edit) in _openEdits.entries) {
       final text = _controllers[cellId]?.text;
       if (text != null && text != edit.startText) {
-        _drafts.storeOpen(edit.key, text, edit.baseText);
+        _drafts.storeOpen(edit.key, text, edit.baseText, edit.baseVersion);
       } else {
         _drafts.unstoreOpen(edit.key);
       }
@@ -329,11 +346,15 @@ class LazyTextFieldEditController extends ChangeNotifier {
     TextEditingController controller,
     Object key,
     String initialValue,
+    String? version,
   ) {
+    // An editor that continues a draft starts from the draft's base.
+    final draft = _drafts.draftFor(key);
     final edit = _OpenEdit(
       key: key,
       startText: initialValue,
-      baseText: _drafts.draftFor(key)?.baseText ?? initialValue,
+      baseText: draft?.baseText ?? initialValue,
+      baseVersion: draft != null ? draft.baseVersion : version,
     );
     edit.listener = () => _openEditChanged(controller, edit);
     controller.addListener(edit.listener!);
@@ -372,6 +393,9 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// another cell starts editing. **Until then it exists only in memory** (and
   /// in [draftStore], if set): if neither happens, it is never saved.
   ///
+  /// [version] is the record's version the text started from; see
+  /// [draftStore].
+  ///
   /// Set [notify] to false when calling from [State.dispose]; listeners are
   /// then notified after the frame.
   void holdDraft({
@@ -379,6 +403,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     required String source,
     required String value,
     required LazyTextFieldDraftSaver saver,
+    String? version,
     bool notify = true,
   }) {
     _drafts.hold(
@@ -386,6 +411,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
       source: source,
       value: value,
       saver: saver,
+      version: version,
       notify: notify,
     );
     if (!notify) _notifyAfterFrame();
@@ -428,15 +454,24 @@ class LazyTextFieldEditController extends ChangeNotifier {
     return _drafts.saveDrafts(batch: batch);
   }
 
-  /// Restores the drafts in [draftStore] as unsaved drafts; returns how many
-  /// were restored. Drafts already in memory win.
+  /// Restores the drafts in [draftStore] as unsaved drafts, keyed by their
+  /// [LazyTextFieldDraftId]; returns how many were restored. Drafts already
+  /// in memory win.
   ///
-  /// Call it once at startup. Cells show restored drafts, and register how to
-  /// save them, when they are built. Restored drafts
-  /// ([LazyTextFieldDraft.restored]) are not saved when another cell starts
-  /// editing: only when the user commits one from its cell, or by
+  /// Call it once at startup. A cell shows a restored draft, and registers
+  /// how to save it, when it is built with the same draft id. Restored
+  /// drafts ([LazyTextFieldDraft.restored]) are not saved when another cell
+  /// starts editing: only when the user commits one from its cell, or by
   /// [saveDrafts].
-  Future<int> loadDrafts() => _drafts.load();
+  ///
+  /// When several controllers share one store (one per table or screen),
+  /// pass [where] so each loads only its own drafts:
+  ///
+  /// ```dart
+  /// await controller.loadDrafts(where: (id) => id.table == 'tasks');
+  /// ```
+  Future<int> loadDrafts({bool Function(LazyTextFieldDraftId id)? where}) =>
+      _drafts.load(where: where);
 
   /// Number of saves queued or running (`onCommit` and `onSave`).
   int get pendingSaves => _drafts.pendingSaves;
@@ -460,8 +495,9 @@ class LazyTextFieldEditController extends ChangeNotifier {
 
   /// Queues [commit] for [value] and keeps [value] as the draft for [key].
   ///
-  /// [source] is the cell's source text at commit time. [rowKey] picks the
-  /// queue under [LazyTextFieldSaveOrder.perRow]. Returns whether the commit
+  /// [source] is the cell's source text at commit time, and [version] the
+  /// record's version (see [draftStore]). [rowKey] picks the queue under
+  /// [LazyTextFieldSaveOrder.perRow]. Returns whether the commit
   /// succeeded. Committing the value that is already pending for [key]
   /// returns the running save instead of queuing another.
   ///
@@ -473,6 +509,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     required String value,
     required LazyTextFieldCommit commit,
     Object? rowKey,
+    String? version,
     bool notify = true,
   }) {
     final result = _drafts.enqueue(
@@ -481,6 +518,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
       value: value,
       commit: commit,
       rowKey: rowKey,
+      version: version,
       notify: notify,
     );
     if (!notify) _notifyAfterFrame();
@@ -502,6 +540,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
     required String value,
     required Future<bool> Function() save,
     Object? rowKey,
+    String? version,
     bool notify = true,
   }) {
     final result = _drafts.track(
@@ -510,6 +549,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
       value: value,
       save: save,
       rowKey: rowKey,
+      version: version,
       notify: notify,
     );
     if (!notify) _notifyAfterFrame();
@@ -540,7 +580,7 @@ class LazyTextFieldEditController extends ChangeNotifier {
   /// Draft keys whose last [draftStore] write failed, with the error. Each
   /// failure is also reported to [FlutterError]; a later successful write
   /// of the key clears it.
-  Map<String, Object> get draftStoreErrors => _drafts.storeErrors;
+  Map<Object, Object> get draftStoreErrors => _drafts.storeErrors;
 
   /// Updates the active controller text for [cellId] without starting editing.
   void updateText(String cellId, String value) {
@@ -727,11 +767,13 @@ class _OpenEdit {
     required this.key,
     required this.startText,
     required this.baseText,
+    required this.baseVersion,
   }) : lastText = startText;
 
   final Object key;
   final String startText;
   final String baseText;
+  final String? baseVersion;
   String lastText;
   bool changed = false;
   VoidCallback? listener;

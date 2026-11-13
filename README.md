@@ -166,7 +166,7 @@ LazyTextFieldControllerScope(child: grid); // saves one at a time
 ScopedLazyTextField(
   cellId: '${item.id}/name',
   text: item.name,
-  rowKey: item.id,
+  rowId: item.id,
   onCommit: (value) => api.updateName(item.id, value), // throw to fail
   errorMessageOf: (error) => 'Not saved: $error',
 );
@@ -186,7 +186,12 @@ final status = LazyTextFieldControllerScope.maybeOf(context)
   draft failed (then it retries).
 - A failed draft's error is shown in the `errorMessage` popup while that cell
   is editing; typing hides it until the next commit.
-- `draftKey` (default `cellId`) lets several cells share one draft.
+- A draft belongs to its cell (`cellId`) unless the cell says which record
+  it edits: a `tableId` on the scope, a row id, and a `fieldId` on the cell
+  (see [Keeping drafts across restarts](#keeping-drafts-across-restarts-hive-etc)).
+  Then it follows the record when rows are sorted, filtered, or reloaded,
+  and two tables never share one. `draftKey` sets the key directly, for
+  example to let several cells share one draft.
 
 **Save order.** Every save goes through one queue: `onCommit` commits,
 `onSave` calls (on submit and on switch), `saveDrafts()`, and batches. A save
@@ -197,7 +202,7 @@ example a row version). Pass `saveOrder` to your own
 | `saveOrder`                     | Behavior                                                                                                          |
 |---------------------------------|-------------------------------------------------------------------------------------------------------------------|
 | `sequential` (default)          | One save at a time, in queue order.                                                                               |
-| `perRow`                        | Saves with the same `rowKey` run in order; different rows run in parallel. Cells without `rowKey` share a queue.   |
+| `perRow`                        | Saves with the same `rowId` (from the cell or a `LazyTextFieldRowScope`) run in order; different rows run in parallel. Cells without a row share a queue. |
 
 In both orders, **saves of the same draft key never overlap**: a newer value
 is sent only after the older save finished, so the older one cannot land
@@ -239,8 +244,9 @@ if (editController.hasUnsavedChanges) {
 ```
 
 Each `LazyTextFieldUnsavedChange` has the draft key, the text not saved yet
-(the editor's text while `isEditing`), the text before the change
-(`baseText`), and the `draft`, if any, with its status. Listeners of the
+(the editor's text while `isEditing`), the text and record version before
+the change (`baseText`, `baseVersion`), and the `draft`, if any, with its
+status. Listeners of the
 controller are notified when an open editor's text first differs from the
 text it opened with, and when it matches again, not on every keystroke.
 
@@ -281,7 +287,8 @@ await editController.saveDrafts(
   `onSavesSettled`.
 - A batch gets `{draftKey: value}` and returns the errors of drafts that
   failed (missing or null means saved). If it throws, every draft fails with
-  that error.
+  that error. For cells that know their record (see below), each key is a
+  `LazyTextFieldDraftId` that names the table, row, and field to write.
 - `immediate` mode (default) also saves unsaved drafts when another cell
   starts editing.
 
@@ -315,11 +322,65 @@ final editController = LazyTextFieldEditController(
 await editController.loadDrafts(); // at startup
 ```
 
-- **Draft keys must be `String`s that are unique within the store and stable
-  across restarts** (`draftKey`, default `cellId`). Include the table or
-  screen name, for example `'orders/42/name'`. A draft with another key is
-  reported to `FlutterError` and kept in memory only, and
-  `whenDraftsStored()` returns false while it exists.
+**Every draft must say which record it belongs to**, or it is never
+written to the store. Name the table once on the scope, the row and its
+version once per row, and the field on each cell:
+
+```dart
+LazyTextFieldControllerScope(
+  controller: editController,
+  tableId: 'orders',                          // table, collection, or type
+  child: ListView.builder(
+    itemCount: orders.length,
+    itemBuilder: (context, i) {
+      final order = orders[i];
+      return LazyTextFieldRowScope(
+        rowId: order.id,                      // the record's id, not i
+        version: order.updatedAt.toIso8601String(), // or a revision, ETag
+        child: Row(
+          children: [
+            Expanded(
+              child: ScopedLazyTextField(
+                cellId: 'orders/${order.id}/name',
+                fieldId: 'name',
+                text: order.name,
+                onCommit: (value) => api.updateName(order.id, value),
+              ),
+            ),
+            // ...more cells with their own fieldId
+          ],
+        ),
+      );
+    },
+  ),
+);
+```
+
+- The cell's draft key is then
+  `LazyTextFieldDraftId(table: 'orders', row: '42', field: 'name')`. A cell's
+  own `rowId` and `version` win over the row scope's, so cells without a row
+  scope can give them directly. A nested `LazyTextFieldControllerScope` with
+  the same controller and another `tableId` covers a second table.
+- `draftKey: LazyTextFieldDraftId(...)` on a cell sets the id directly, for
+  a cell that cannot use the scopes (it still needs a `version`).
+- A draft is stored only with a `LazyTextFieldDraftId` key whose table, row,
+  and field are not empty, and a version. If any is missing (for example a
+  cell without `fieldId`, whose key is then its `cellId`), the draft is
+  **not written at all**: it is kept in memory only, reported to
+  `FlutterError` once (in release builds too) with what is missing, and
+  `whenDraftsStored()` returns false while it exists. Without a store,
+  nothing is required.
+- The id is the store key (`'orders/42/name'`, `LazyTextFieldStoredDraft.key`),
+  so after a restart a draft goes back to the same record, whichever cell
+  shows it now. Even with cell ids that are list positions, a draft never
+  lands in the wrong row: if rows are re-sorted while an editor is open, its
+  text is kept as a draft for the record it was opened on.
+- `version` is stored as the draft's `baseVersion`: the version of the record
+  the change started from. It stays the version of the first change until
+  the draft is saved or discarded.
+- Several controllers can share one store (one per account, for example).
+  Each loads only its own drafts with
+  `loadDrafts(where: (id) => id.table == 'orders')`.
 - Restored drafts come back as `unsaved`, also those that were saving when
   the app stopped, so they may be sent again. Make the save idempotent.
 - A restored draft is shown, and gets its saver, when its cell is built.
@@ -330,8 +391,8 @@ await editController.loadDrafts(); // at startup
   has not seen them yet, and the server value may have changed while the
   app was closed. They are saved when the user commits one from its cell,
   or by `saveDrafts()`. `draft.restored` tells them apart, for example to
-  mark them in the cell or compare `draft.baseText` with the server value
-  first.
+  mark them in the cell or compare `draft.baseVersion` (or `baseText`) with
+  the record on the server first.
 - Failure errors are not stored.
 - Store calls run one at a time, in the order the drafts changed: a `delete`
   starts only after the earlier `put` finished, so a deleted draft cannot
@@ -692,7 +753,7 @@ behaviors:
    different cells do not overlap either: a submit waits for earlier saves,
    and its editor stays open until then. If your rows are independent and
    the server is slow, use `saveOrder: LazyTextFieldSaveOrder.perRow` and
-   give cells a `rowKey`. Remove your own "latest save wins" or "save in
+   give cells a `rowId` (or a `LazyTextFieldRowScope`). Remove your own "latest save wins" or "save in
    flight" guards; the queue does this.
 4. **`onSaved` runs after every successful save,** including saves on
    switch, from `saveDrafts()`, and after the cell left the tree. Update

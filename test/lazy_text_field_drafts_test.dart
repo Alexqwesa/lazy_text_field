@@ -77,7 +77,7 @@ void main() {
                         width: 300,
                         child: ScopedLazyTextField(
                           cellId: cell.id,
-                          rowKey: cell.rowKey,
+                          rowId: cell.rowKey,
                           text: values[cell.id]!,
                           singleLine: true,
                           style: _style,
@@ -391,7 +391,7 @@ void main() {
       expect(server.calls, [('a', 'new-a'), ('b', 'new-b')]);
     });
 
-    testWidgets('perRow keeps cells without a rowKey in one queue', (
+    testWidgets('perRow keeps cells without a rowId in one queue', (
       tester,
     ) async {
       await pumpCells(tester, saveOrder: LazyTextFieldSaveOrder.perRow);

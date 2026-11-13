@@ -327,12 +327,13 @@ void main() {
       );
       addTearDown(drafts.dispose);
       drafts.hold(
-        key: 'k',
+        key: _id('k'),
         source: 'old',
         value: 'v',
+        version: 'v1',
         saver: (_) async => true,
       );
-      drafts.clearDraft('k');
+      drafts.clearDraft(_id('k'));
       await pumpEventQueue();
       expect(store.log, ['put k']);
 
@@ -360,15 +361,17 @@ void main() {
       addTearDown(() => FlutterError.onError = previous);
 
       drafts.hold(
-        key: 'a',
+        key: _id('a'),
         source: 'old',
         value: 'v',
+        version: 'v1',
         saver: (_) async => true,
       );
       drafts.hold(
-        key: 'b',
+        key: _id('b'),
         source: 'old',
         value: 'v',
+        version: 'v1',
         saver: (_) async => true,
       );
       await pumpEventQueue();
@@ -377,8 +380,8 @@ void main() {
       store.finishNext();
       await pumpEventQueue();
       expect(errors.single.exception, 'disk full');
-      expect(store.drafts.keys, ['b']);
-      expect(drafts.storeErrors.keys, ['a']);
+      expect(store.drafts.keys, [_key('b')]);
+      expect(drafts.storeErrors.keys, [_id('a')]);
 
       // whenStored retries the failed key once.
       final stored = drafts.whenStored();
@@ -387,7 +390,7 @@ void main() {
       store.finishNext();
       expect(await stored, isTrue);
       expect(drafts.storeErrors, isEmpty);
-      expect(store.drafts.keys, unorderedEquals(['a', 'b']));
+      expect(store.drafts.keys, unorderedEquals([_key('a'), _key('b')]));
     });
 
     test('load waits for queued writes', () async {
@@ -399,12 +402,13 @@ void main() {
       );
       addTearDown(drafts.dispose);
       drafts.hold(
-        key: 'k',
+        key: _id('k'),
         source: 'old',
         value: 'v',
+        version: 'v1',
         saver: (_) async => true,
       );
-      drafts.clearDraft('k');
+      drafts.clearDraft(_id('k'));
       var loaded = false;
       final load = drafts.load().then((count) {
         loaded = true;
@@ -467,9 +471,15 @@ class _SlowStore implements LazyTextFieldDraftStore {
 
   @override
   Future<void> put(LazyTextFieldStoredDraft draft) =>
-      _op('put ${draft.key}', () => drafts[draft.key] = draft);
+      _op('put ${draft.id.field}', () => drafts[draft.key] = draft);
 
   @override
   Future<void> delete(String key) =>
-      _op('delete $key', () => drafts.remove(key));
+      _op('delete ${key.split('/').last}', () => drafts.remove(key));
 }
+
+/// A draft id in table `t`, row `1`; the store logs its [field].
+LazyTextFieldDraftId _id(String field) =>
+    LazyTextFieldDraftId(table: 't', row: '1', field: field);
+
+String _key(String field) => _id(field).storeKey;

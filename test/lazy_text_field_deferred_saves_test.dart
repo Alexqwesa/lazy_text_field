@@ -12,6 +12,12 @@ const _style = TextStyle(
   letterSpacing: 0,
 );
 
+/// The draft id of cell [id] in the store tests.
+LazyTextFieldDraftId _id(String id) =>
+    LazyTextFieldDraftId(table: 'tasks', row: id, field: 'text');
+
+String _key(String id) => _id(id).storeKey;
+
 void main() {
   late List<(String, String)> commits;
   late Set<String> failing;
@@ -45,6 +51,7 @@ void main() {
     LazyTextFieldEditController controller, {
     List<String> ids = const ['a', 'b', 'c'],
     LazyTextFieldSave? onSave,
+    bool withIds = false,
   }) {
     return tester.pumpWidget(
       MaterialApp(
@@ -60,6 +67,8 @@ void main() {
                       width: 300,
                       child: ScopedLazyTextField(
                         cellId: id,
+                        draftKey: withIds ? _id(id) : null,
+                        version: withIds ? 'v1' : null,
                         text: 'old-$id',
                         singleLine: true,
                         style: _style,
@@ -112,7 +121,7 @@ void main() {
 
   LazyTextFieldDraftStatus? status(
     LazyTextFieldEditController controller,
-    String key,
+    Object key,
   ) => controller.draftFor(key)?.status;
 
   group('deferred mode', () {
@@ -415,33 +424,55 @@ void main() {
   });
 
   group('draft store', () {
+    void hold(
+      LazyTextFieldEditController controller,
+      Object key,
+      String value, {
+      String? version = 'v1',
+    }) => controller.holdDraft(
+      key: key,
+      source: 'old',
+      value: value,
+      version: version,
+      saver: (_) async => true,
+    );
+
+    List<FlutterErrorDetails> captureErrors() {
+      final errors = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = previous);
+      return errors;
+    }
+
     testWidgets('writes unsaved and failed drafts and deletes saved ones', (
       tester,
     ) async {
       final store = LazyTextFieldMemoryDraftStore();
       final controller = newController(store: store);
-      await pumpCells(tester, controller);
+      await pumpCells(tester, controller, withIds: true);
       await edit(tester, 'a', 'new-a');
       await edit(tester, 'b', 'new-b');
       await submit(tester);
       await tester.pump();
 
-      expect(store.drafts.keys, unorderedEquals(['a', 'b']));
+      expect(store.drafts.keys, unorderedEquals([_key('a'), _key('b')]));
       expect(
-        store.drafts['a'],
-        const LazyTextFieldStoredDraft(
-          key: 'a',
+        store.drafts[_key('a')],
+        LazyTextFieldStoredDraft(
+          id: _id('a'),
           value: 'new-a',
           baseText: 'old-a',
+          baseVersion: 'v1',
         ),
       );
 
       failing.add('b');
       await controller.saveDrafts();
       await tester.pump();
-      expect(store.drafts.keys, ['b']);
+      expect(store.drafts.keys, [_key('b')]);
 
-      controller.clearDraft('b');
+      controller.clearDraft(_id('b'));
       await tester.pump();
       expect(store.drafts, isEmpty);
     });
@@ -452,16 +483,11 @@ void main() {
         saveMode: LazyTextFieldSaveMode.deferred,
         draftStore: store,
       );
-      controller.holdDraft(
-        key: 'a',
-        source: 'old',
-        value: 'new',
-        saver: (_) async => true,
-      );
+      hold(controller, _id('a'), 'new');
       await tester.pump();
       controller.dispose();
       await tester.pump();
-      expect(store.drafts.keys, ['a']);
+      expect(store.drafts.keys, [_key('a')]);
     });
 
     testWidgets('loadDrafts restores drafts that cells show and save', (
@@ -469,17 +495,19 @@ void main() {
     ) async {
       final store = LazyTextFieldMemoryDraftStore()
         ..put(
-          const LazyTextFieldStoredDraft(
-            key: 'a',
+          LazyTextFieldStoredDraft(
+            id: _id('a'),
             value: 'restored',
             baseText: 'old-a',
+            baseVersion: 'v1',
           ),
         );
       final controller = newController(store: store);
       expect(await controller.loadDrafts(), 1);
-      expect(status(controller, 'a'), LazyTextFieldDraftStatus.unsaved);
+      expect(status(controller, _id('a')), LazyTextFieldDraftStatus.unsaved);
+      expect(controller.draftFor(_id('a'))!.baseVersion, 'v1');
 
-      await pumpCells(tester, controller);
+      await pumpCells(tester, controller, withIds: true);
       expect(shown(tester, 'a'), 'restored');
 
       final result = await controller.saveDrafts();
@@ -493,10 +521,11 @@ void main() {
         'them', (tester) async {
       final store = LazyTextFieldMemoryDraftStore()
         ..put(
-          const LazyTextFieldStoredDraft(
-            key: 'gone',
+          LazyTextFieldStoredDraft(
+            id: _id('gone'),
             value: 'restored',
             baseText: 'old',
+            baseVersion: 'v1',
           ),
         );
       final controller = newController(store: store);
@@ -506,58 +535,143 @@ void main() {
       expect(result.skipped, 1);
       expect(result.allSaved, isFalse);
 
-      result = await controller.saveDrafts(batch: (_) async => {});
+      Map<Object, String>? sent;
+      result = await controller.saveDrafts(
+        batch: (values) async {
+          sent = values;
+          return {};
+        },
+      );
       await tester.pump();
       expect(result.saved, 1);
+      // The batch gets the ids, so it knows the table, row, and field.
+      expect(sent, {_id('gone'): 'restored'});
       expect(store.drafts, isEmpty);
     });
 
     testWidgets('drafts in memory win over stored ones', (tester) async {
       final store = LazyTextFieldMemoryDraftStore()
         ..put(
-          const LazyTextFieldStoredDraft(
-            key: 'a',
+          LazyTextFieldStoredDraft(
+            id: _id('a'),
             value: 'stored',
             baseText: 'old',
+            baseVersion: 'v1',
           ),
         );
       final controller = newController(store: store);
-      controller.holdDraft(
-        key: 'a',
-        source: 'old',
-        value: 'newer',
-        saver: (_) async => true,
-      );
+      hold(controller, _id('a'), 'newer');
       expect(await controller.loadDrafts(), 0);
-      expect(controller.draftFor('a')!.value, 'newer');
+      expect(controller.draftFor(_id('a'))!.value, 'newer');
     });
 
-    test('a non-String key is reported and kept in memory only', () async {
+    testWidgets('loadDrafts(where:) loads only the matching drafts', (
+      tester,
+    ) async {
+      LazyTextFieldStoredDraft record(String table) => LazyTextFieldStoredDraft(
+        id: LazyTextFieldDraftId(table: table, row: '1', field: 'title'),
+        value: 'draft in $table',
+        baseText: 'old',
+        baseVersion: 'v1',
+      );
+      final store = LazyTextFieldMemoryDraftStore()
+        ..put(record('tasks'))
+        ..put(record('notes'));
+      final controller = newController(store: store);
+
+      expect(
+        await controller.loadDrafts(where: (id) => id.table == 'tasks'),
+        1,
+      );
+      expect(controller.drafts.keys, [
+        const LazyTextFieldDraftId(table: 'tasks', row: '1', field: 'title'),
+      ]);
+      // The other table's draft stays in the store, untouched.
+      expect(store.drafts, hasLength(2));
+    });
+
+    test('a draft without a draft id is reported once and kept in memory '
+        'only', () async {
       final store = LazyTextFieldMemoryDraftStore();
       final controller = LazyTextFieldEditController(draftStore: store);
       addTearDown(controller.dispose);
-      final errors = <FlutterErrorDetails>[];
-      final previous = FlutterError.onError;
-      FlutterError.onError = errors.add;
-      addTearDown(() => FlutterError.onError = previous);
+      final errors = captureErrors();
 
-      void hold(String value) => controller.holdDraft(
-        key: 1,
-        source: 'old',
-        value: value,
-        saver: (_) async => true,
-      );
-      hold('new');
-      hold('newer');
+      hold(controller, 'a', 'new');
+      hold(controller, 'a', 'newer');
 
       expect(errors, hasLength(1));
-      expect(errors.single.exception, isArgumentError);
+      expect(errors.single.exception, isA<FlutterError>());
+      expect(
+        '${errors.single.exception}',
+        contains('LazyTextFieldDraftId key (its key is a String)'),
+      );
       expect(store.drafts, isEmpty);
-      expect(controller.draftFor(1)!.value, 'newer');
+      expect(controller.draftFor('a')!.value, 'newer');
       expect(await controller.whenDraftsStored(), isFalse);
 
-      controller.clearDraft(1);
+      controller.clearDraft('a');
       expect(await controller.whenDraftsStored(), isTrue);
+    });
+
+    test('a draft without a version is not stored', () async {
+      final store = LazyTextFieldMemoryDraftStore();
+      final controller = LazyTextFieldEditController(draftStore: store);
+      addTearDown(controller.dispose);
+      final errors = captureErrors();
+
+      hold(controller, _id('a'), 'new', version: null);
+      await pumpEventQueue();
+
+      expect('${errors.single.exception}', contains('has no version'));
+      expect(store.drafts, isEmpty);
+      expect(await controller.whenDraftsStored(), isFalse);
+    });
+
+    test('a draft id with an empty part is not stored', () async {
+      final store = LazyTextFieldMemoryDraftStore();
+      final controller = LazyTextFieldEditController(draftStore: store);
+      addTearDown(controller.dispose);
+      final errors = captureErrors();
+
+      hold(
+        controller,
+        const LazyTextFieldDraftId(table: '', row: '1', field: 'title'),
+        'new',
+        version: '',
+      );
+      await pumpEventQueue();
+
+      expect('${errors.single.exception}', contains('has no table, version'));
+      expect(store.drafts, isEmpty);
+    });
+
+    test('without a store, drafts need no id or version', () async {
+      final controller = LazyTextFieldEditController();
+      addTearDown(controller.dispose);
+      final errors = captureErrors();
+
+      hold(controller, 'a', 'new', version: null);
+
+      expect(errors, isEmpty);
+      expect(controller.draftFor('a')!.value, 'new');
+      expect(await controller.whenDraftsStored(), isTrue);
+    });
+
+    testWidgets('a cell without an id or version keeps its draft in memory '
+        'only', (tester) async {
+      final store = LazyTextFieldMemoryDraftStore();
+      final controller = newController(store: store);
+      final errors = captureErrors();
+      await pumpCells(tester, controller);
+      await edit(tester, 'a', 'new-a');
+      await submit(tester);
+      await tester.pump();
+
+      expect(status(controller, 'a'), LazyTextFieldDraftStatus.unsaved);
+      expect(errors, hasLength(1));
+      expect(store.drafts, isEmpty);
+      expect(await controller.whenDraftsStored(), isFalse);
     });
 
     testWidgets('failed writes are tracked and retried by whenDraftsStored', (
@@ -565,25 +679,17 @@ void main() {
     ) async {
       final store = _FlakyStore()..failures = 1;
       final controller = newController(store: store);
-      final errors = <FlutterErrorDetails>[];
-      final previous = FlutterError.onError;
-      FlutterError.onError = errors.add;
-      addTearDown(() => FlutterError.onError = previous);
+      final errors = captureErrors();
 
-      controller.holdDraft(
-        key: 'a',
-        source: 'old',
-        value: 'new',
-        saver: (_) async => true,
-      );
+      hold(controller, _id('a'), 'new');
       await tester.pump();
-      expect(controller.draftStoreErrors.keys, ['a']);
+      expect(controller.draftStoreErrors.keys, [_id('a')]);
       expect(errors, hasLength(1));
       expect(store.drafts, isEmpty);
 
       expect(await controller.whenDraftsStored(), isTrue);
       expect(controller.draftStoreErrors, isEmpty);
-      expect(store.drafts.keys, ['a']);
+      expect(store.drafts.keys, [_key('a')]);
     });
 
     testWidgets('whenDraftsStored reports a store that keeps failing', (
@@ -591,52 +697,54 @@ void main() {
     ) async {
       final store = _FlakyStore()..failures = 100;
       final controller = newController(store: store);
-      final previous = FlutterError.onError;
-      FlutterError.onError = (_) {};
-      addTearDown(() => FlutterError.onError = previous);
+      captureErrors();
 
-      controller.holdDraft(
-        key: 'a',
-        source: 'old',
-        value: 'new',
-        saver: (_) async => true,
-      );
+      hold(controller, _id('a'), 'new');
       expect(await controller.whenDraftsStored(), isFalse);
-      expect(controller.draftStoreErrors.keys, ['a']);
+      expect(controller.draftStoreErrors.keys, [_id('a')]);
     });
 
     testWidgets('a delete after a failed put is still sent', (tester) async {
       final store = _FlakyStore()
-        ..drafts['a'] = const LazyTextFieldStoredDraft(
-          key: 'a',
+        ..drafts[_key('a')] = LazyTextFieldStoredDraft(
+          id: _id('a'),
           value: 'older',
           baseText: 'old',
+          baseVersion: 'v1',
         )
         ..failures = 1;
       final controller = newController(store: store);
-      final previous = FlutterError.onError;
-      FlutterError.onError = (_) {};
-      addTearDown(() => FlutterError.onError = previous);
+      captureErrors();
 
-      controller.holdDraft(
-        key: 'a',
-        source: 'old',
-        value: 'new',
-        saver: (_) async => true,
-      );
+      hold(controller, _id('a'), 'new');
       await tester.pump();
-      controller.clearDraft('a');
+      controller.clearDraft(_id('a'));
       expect(await controller.whenDraftsStored(), isTrue);
       expect(store.drafts, isEmpty);
     });
 
     test('stored drafts round-trip through JSON', () {
       const draft = LazyTextFieldStoredDraft(
-        key: 'row-1/name',
+        id: LazyTextFieldDraftId(table: 'tasks', row: '1', field: 'name'),
         value: 'new',
         baseText: 'old',
+        baseVersion: '2026-11-13T10:00:00.000Z',
       );
       expect(LazyTextFieldStoredDraft.fromJson(draft.toJson()), draft);
+    });
+
+    test('store keys keep the parts of an id apart', () {
+      const slash = LazyTextFieldDraftId(table: 'a/b', row: 'c', field: 'd');
+      const split = LazyTextFieldDraftId(table: 'a', row: 'b/c', field: 'd');
+      expect(slash.storeKey, isNot(split.storeKey));
+      expect(
+        const LazyTextFieldDraftId(
+          table: 'tasks',
+          row: '7',
+          field: 'title',
+        ).storeKey,
+        'tasks/7/title',
+      );
     });
   });
 }

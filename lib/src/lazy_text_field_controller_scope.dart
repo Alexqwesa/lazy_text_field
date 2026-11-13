@@ -11,10 +11,21 @@ class LazyTextFieldControllerScope extends StatefulWidget {
     required this.child,
     super.key,
     this.controller,
+    this.tableId,
   });
 
   /// External controller to expose, or null to let the scope own one.
   final LazyTextFieldEditController? controller;
+
+  /// The table, collection, or record type the cells below edit, for
+  /// example `'tasks'`.
+  ///
+  /// With a row id (from a `LazyTextFieldRowScope` or the cell's `rowId`), a
+  /// cell's `fieldId` makes its draft key
+  /// `LazyTextFieldDraftId(table: tableId, row: rowId, field: fieldId)`, which
+  /// a [LazyTextFieldEditController.draftStore] requires. Nest another scope
+  /// with the same controller and another [tableId] for a second table.
+  final String? tableId;
 
   /// Subtree that can read the shared controller.
   final Widget child;
@@ -34,6 +45,13 @@ class LazyTextFieldControllerScope extends StatefulWidget {
     return context
         .dependOnInheritedWidgetOfExactType<_LazyTextFieldControllerInherited>()
         ?.notifier;
+  }
+
+  /// Returns the nearest scope's [tableId], or null.
+  static String? tableIdOf(BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<_LazyTextFieldControllerInherited>()
+        ?.tableId;
   }
 
   @override
@@ -64,6 +82,7 @@ class _LazyTextFieldControllerScopeState
   Widget build(BuildContext context) {
     return _LazyTextFieldControllerInherited(
       notifier: _controller,
+      tableId: widget.tableId,
       child: widget.child,
     );
   }
@@ -73,6 +92,13 @@ class _LazyTextFieldControllerInherited
     extends InheritedNotifier<LazyTextFieldEditController> {
   const _LazyTextFieldControllerInherited({
     required super.notifier,
+    required this.tableId,
     required super.child,
   });
+
+  final String? tableId;
+
+  @override
+  bool updateShouldNotify(_LazyTextFieldControllerInherited oldWidget) =>
+      super.updateShouldNotify(oldWidget) || oldWidget.tableId != tableId;
 }
